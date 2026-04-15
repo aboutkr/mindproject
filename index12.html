@@ -1,0 +1,1254 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>마인드 브릿지 (Mind Bridge) - 데이터 기반 조직/개인 심층 분석</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Pretendard:wght@300;400;500;700;800;900&display=swap');
+        
+        body {
+            font-family: 'Pretendard', sans-serif;
+            background-color: #fafafa;
+            color: #1e293b;
+            overflow-x: hidden;
+        }
+
+        /* 다채로운 메쉬 그라데이션 배경 (사파리 100vh 버그 방지) */
+        .mesh-bg {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            z-index: -1;
+            background: 
+                radial-gradient(circle at 15% 50%, rgba(255, 126, 103, 0.12), transparent 40%),
+                radial-gradient(circle at 85% 30%, rgba(139, 92, 246, 0.12), transparent 40%),
+                radial-gradient(circle at 50% 80%, rgba(16, 185, 129, 0.08), transparent 40%);
+            background-color: #fdfcfb;
+        }
+
+        .blob {
+            position: absolute;
+            filter: blur(60px);
+            opacity: 0.5;
+            z-index: 0;
+            border-radius: 50%;
+            animation: float 12s infinite ease-in-out alternate;
+        }
+        
+        @keyframes float {
+            0% { transform: translateY(0) scale(1); }
+            100% { transform: translateY(-20px) scale(1.05); }
+        }
+
+        .glass-card {
+            background: rgba(255, 255, 255, 0.75);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.8);
+            box-shadow: 0 10px 40px -10px rgba(0,0,0,0.05);
+        }
+
+        .bridge-gradient-text {
+            background: linear-gradient(135deg, #FF6B6B, #845EF7, #339AF0);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .bridge-gradient-bg {
+            background: linear-gradient(135deg, #FF6B6B, #845EF7, #339AF0);
+        }
+
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 800px;
+            margin: 0 auto;
+            height: 400px;
+        }
+
+        /* 라디오 버튼 커스텀 */
+        .radio-btn { transition: all 0.2s ease-out; }
+        .radio-btn.selected {
+            background: linear-gradient(135deg, rgba(255,107,107,0.05), rgba(132,94,247,0.05));
+            border-color: #845EF7;
+            color: #5F3DC4;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px -3px rgba(132, 94, 247, 0.15);
+        }
+        
+        .life-slider {
+            -webkit-appearance: none;
+            width: 100%;
+            height: 8px;
+            border-radius: 5px;  
+            background: #e2e8f0;
+            outline: none;
+        }
+        .life-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%; 
+            background: #845EF7;
+            cursor: pointer;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        }
+
+        /* 9가지 성격 색상 팔레트 */
+        :root {
+            --color-t1: #fa5252; --color-t2: #fd7e14; --color-t3: #fcc419;
+            --color-t4: #40c057; --color-t5: #22b8cf; --color-t6: #339af0;
+            --color-t7: #845ef7; --color-t8: #be4bdb; --color-t9: #e64980;
+        }
+
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+        .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>
+</head>
+<body>
+
+    <div class="mesh-bg"></div>
+    <div id="app" class="relative z-10 min-h-screen flex flex-col"></div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, addDoc, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // --- FIREBASE INITIALIZATION ---
+        let app, auth, db, appId;
+        try {
+            const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : { projectId: "demo-project" };
+            app = initializeApp(firebaseConfig);
+            auth = getAuth(app);
+            db = getFirestore(app);
+            appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+            
+            const initAuth = async () => {
+                try {
+                    if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                        await signInWithCustomToken(auth, __initial_auth_token);
+                    } else {
+                        await signInAnonymously(auth);
+                    }
+                } catch (e) { console.error("Auth init failed", e); }
+            };
+            initAuth();
+            onAuthStateChanged(auth, (user) => {
+                state.user = user;
+                if (user && state.role === 'admin') setupDashboardListener();
+            });
+        } catch (e) { console.error("Firebase setup error:", e); }
+
+        // --- DATA DEFINITIONS ---
+        const PERSONALITY_DATA = {
+            1: { 
+                name: '원칙주의자', short: '원칙/개혁', color: '#fa5252',
+                coreMsg: '세상을 더 나은 곳으로 만들고, 올바른 원칙을 지키려 합니다.',
+                desc: '자신만의 명확한 기준과 이상을 가지고 세상을 더 완벽하게 만들고자 하는 혁신가입니다. 높은 책임감과 윤리 의식을 지니고 있으며, 불합리하거나 비효율적인 것을 개선하려는 강한 내적 동기를 가집니다.',
+                workStyle: '체계적이고 조직적이며, 디테일에 강합니다. 프로세스를 개선하고 품질을 높이는 일에 탁월한 성과를 보입니다.',
+                commStyle: '직설적이고 논리적이며, "옳고 그름"을 명확히 하는 화법을 선호합니다.',
+                stressPoint: '자신의 기준에 미치지 못하는 결과물이나 타인의 무책임한 태도를 볼 때 분노를 느낍니다.',
+                growthPoint: '세상과 타인의 불완전함을 수용하고, 과정 자체를 즐기는 여유를 배울 때 진정한 리더십이 발휘됩니다.',
+                advice: ['실수에 대해 자신과 타인에게 조금 더 관대해지세요.', '비판하기 전에 먼저 긍정적인 면을 찾아 인정해주는 연습을 하세요.']
+            },
+            2: { 
+                name: '조력자', short: '조력/배려', color: '#fd7e14',
+                coreMsg: '타인에게 사랑받고 필요한 존재가 되기 위해 기꺼이 헌신합니다.',
+                desc: '따뜻한 마음으로 타인의 필요를 직관적으로 파악하고 돕는 이타적인 성향입니다. 사람들과의 깊은 연결감과 친밀한 관계를 통해 자신의 존재 가치를 확인합니다.',
+                workStyle: '팀워크를 중시하며, 동료들을 지원하고 독려하는 훌륭한 서포터 역할을 합니다.',
+                commStyle: '부드럽고 긍정적이며, 칭찬과 지지를 아끼지 않습니다.',
+                stressPoint: '자신의 호의가 무시당하거나 충분한 인정을 받지 못한다고 느낄 때 억울함을 느낍니다.',
+                growthPoint: '타인의 필요보다 자신의 감정과 욕구를 먼저 돌볼 때 정서적 안정을 찾습니다.',
+                advice: ['나의 한계를 인정하고 명확하게 "아니오"라고 말하는 연습이 필요합니다.', '다른 사람을 돕기 전에 나 자신을 먼저 돌보는 시간을 확보하세요.']
+            },
+            3: { 
+                name: '성취자', short: '성취/목표', color: '#fcc419',
+                coreMsg: '목표를 달성하고 타인에게 유능한 사람으로 인정받기를 원합니다.',
+                desc: '성공과 성취를 향한 강한 열망을 가진 목표 지향적인 유형입니다. 매우 효율적이고 적응력이 뛰어나며, 상황에 맞춰 자신의 이미지를 매력적으로 연출합니다.',
+                workStyle: '결과 중심적이며, 효율성과 생산성을 극대화하는 방법을 본능적으로 찾습니다.',
+                commStyle: '자신감 넘치고 설득력 있는 화법을 구사하며 핵심만 간결하게 전달합니다.',
+                stressPoint: '실패에 대한 두려움이 극에 달하거나 인정받지 못할 때 번아웃에 빠집니다.',
+                growthPoint: '외적인 성취를 넘어, 타인과 진실하게 협력할 때 훌륭한 리더가 됩니다.',
+                advice: ['성과를 내지 않고도 있는 그대로 쉬는 "무위(無爲)"의 시간을 가지세요.', '자신의 감정과 약점을 솔직하게 인정하고 공유하는 연습을 해보세요.']
+            },
+            4: { 
+                name: '개인주의자', short: '낭만/독창', color: '#40c057',
+                coreMsg: '나만의 특별함을 세상이 인정하고 진정한 나를 알아봐주길 원합니다.',
+                desc: '풍부한 감수성과 독창적인 심미안을 가진 예술가적 성향입니다. 평범함을 거부하고 자신만의 고유한 정체성과 깊이 있는 진정성을 추구합니다.',
+                workStyle: '창의성과 미적 감각, 혹은 깊은 의미를 부여할 수 있는 업무에서 탁월함을 발휘합니다.',
+                commStyle: '자신의 감정과 내면 상태를 표현하는 데 익숙하며, 은유적이고 상징적인 언어를 자주 사용합니다.',
+                stressPoint: '자신이 이해받지 못하거나 평범해진다고 느낄 때 심한 우울감에 빠지기 쉽습니다.',
+                growthPoint: '감정의 기복에 휩쓸리지 않고, 객관적인 시각으로 일상을 유지할 때 창조적 에너지가 구현됩니다.',
+                advice: ['순간의 감정에 매몰되기보다 현재의 객관적인 사실에 집중해보세요.', '일상적인 규칙과 루틴을 만들고 이를 성실하게 지켜나가는 연습이 필요합니다.']
+            },
+            5: { 
+                name: '탐구자', short: '탐구/지식', color: '#22b8cf',
+                coreMsg: '세상의 이치를 꿰뚫어보고, 지식과 정보로 무장하여 독립성을 유지하려 합니다.',
+                desc: '지적 호기심이 강하고 객관적이며 독립적인 분석가입니다. 세상의 원리와 지식을 깊이 탐구함으로써 스스로의 자율성을 지키고자 합니다.',
+                workStyle: '뛰어난 집중력과 분석력으로 복잡한 문제의 본질을 파악하고 혁신적인 해결책을 제시합니다.',
+                commStyle: '감정을 배제하고 논리와 팩트 위주로 간결하게 소통합니다.',
+                stressPoint: '지식이 부족하다고 느끼거나 외부의 압박이 심해질 때 현실과 단절하려 합니다.',
+                growthPoint: '지식을 현실 세계에 용기 있게 나누고 타인과 교류할 때 진정한 통찰이 완성됩니다.',
+                advice: ['생각만 하기보다 직접 행동으로 옮기고 경험해 보는 것을 시도하세요.', '자신의 지식과 통찰을 다른 사람들과 기꺼이 나누는 연습을 하세요.']
+            },
+            6: { 
+                name: '충실가', short: '안전/책임', color: '#339af0',
+                coreMsg: '불확실한 세상에서 안전과 확실성을 찾으며, 신뢰할 수 있는 대상을 지지합니다.',
+                desc: '책임감이 강하고 위험을 미리 예측하여 대비하는 신중한 유형입니다. 자신이 속한 공동체나 신념에 대한 충성심이 깊습니다.',
+                workStyle: '잠재적인 리스크를 찾아내고 대비책을 마련하는 데 탁월하며 규정을 중시합니다.',
+                commStyle: '질문이 많고 의구심을 자주 표현하며, 결정을 내리기 전 다양한 의견을 구합니다.',
+                stressPoint: '불안과 의심이 통제 범위를 넘어설 때 최악의 시나리오에 집착합니다.',
+                growthPoint: '세상의 불확실성을 수용하고 자신의 직관과 용기를 믿을 때 내면의 평안을 얻습니다.',
+                advice: ['최악의 상황 대신 일어날 수 있는 최상의 시나리오를 상상해보세요.', '스스로의 결정 능력을 신뢰하고 행동으로 옮기는 용기를 내세요.']
+            },
+            7: { 
+                name: '열정가', short: '열정/경험', color: '#845ef7',
+                coreMsg: '세상의 즐거움과 새로운 경험을 탐험하며, 고통과 지루함을 피하려 합니다.',
+                desc: '호기심이 넘치고 삶의 긍정적인 면을 바라보는 낙천주의자입니다. 새롭고 흥미로운 아이디어와 경험을 끊임없이 추구합니다.',
+                workStyle: '창의적인 아이디어 뱅크이며 유연한 환경을 선호하고 조직에 활력을 불어넣습니다.',
+                commStyle: '말이 빠르고 열정적이며, 분위기 메이커 역할을 합니다.',
+                stressPoint: '지루한 일에 갇혔다고 느낄 때 산만하고 충동적으로 행동할 수 있습니다.',
+                growthPoint: '하나의 깊이 있는 지식이나 현재의 감정에 온전히 몰입할 때 진정한 기쁨을 발견합니다.',
+                advice: ['벌려놓은 일을 끝까지 마무리 짓는 인내심을 기르세요.', '부정적인 감정이나 고통을 직면하고 받아들이는 연습이 필요합니다.']
+            },
+            8: { 
+                name: '도전자', short: '도전/주도', color: '#be4bdb',
+                coreMsg: '스스로의 삶을 통제하고, 강인함을 통해 자신과 내 사람들을 보호하려 합니다.',
+                desc: '강력한 에너지와 결단력을 가진 타고난 리더입니다. 불의에 맞서고 약자를 보호하려는 성향이 강합니다.',
+                workStyle: '큰 그림을 보고 빠르게 결단을 내리며 강력한 추진력으로 목표를 향해 돌진합니다.',
+                commStyle: '매우 직설적이고 단도직입적이며, 갈등을 두려워하지 않고 문제를 명확히 합니다.',
+                stressPoint: '자신의 통제력을 잃거나 배신당했다고 느낄 때 극단적인 분노를 표출할 수 있습니다.',
+                growthPoint: '여린 마음과 취약성을 인정하고 타인을 포용할 때 위대한 리더로 성장합니다.',
+                advice: ['나의 직설적인 태도가 다른 사람에게 위압감을 줄 수 있음을 인지하세요.', '자신의 약점과 부드러운 감정을 신뢰하는 사람에게 표현하는 연습을 해보세요.']
+            },
+            9: { 
+                name: '평화주의자', short: '평화/조화', color: '#e64980',
+                coreMsg: '갈등을 피하고 평화로운 상태를 유지하며, 주변과 조화롭게 융화되려 합니다.',
+                desc: '편견 없이 사람을 수용하고 주변과 조화를 이루는 따뜻한 중재자입니다. 내면의 고요와 평온을 유지하는 것을 최우선으로 합니다.',
+                workStyle: '팀 내의 윤활유 역할을 하며 안정적이고 꾸준하게 업무를 수행하는 훌륭한 조율자입니다.',
+                commStyle: '경청을 잘하며 동의하고 수용하는 부드러운 화법을 사용합니다.',
+                stressPoint: '갈등이 지속되면 문제를 회피하고 방관하거나 수동 공격성으로 나타날 수 있습니다.',
+                growthPoint: '자신의 진짜 가치와 우선순위를 자각하고 주도적으로 참여할 때 진정한 활력을 얻습니다.',
+                advice: ['내면의 분노와 불편한 감정을 건강하게 표현하는 방법을 배우세요.', '타인의 요구보다 내게 정말로 중요하고 필요한 것이 무엇인지 자문해보세요.']
+            }
+        };
+
+        const TEST_QUESTIONS = [
+            "나는 매사에 완벽을 기하려고 노력한다.", "규칙과 원칙을 지키는 것이 매우 중요하다고 생각한다.", "일이 제대로 되지 않으면 쉽게 짜증이 나고 화가 난다.", "나는 내 자신과 타인에게 높은 기준을 적용한다.", "항상 올바른 방법으로 일을 처리해야 직성이 풀린다.", "세상을 개선하고 더 나은 곳으로 만들고 싶다.", "책임감이 강하고 맡은 일은 끝까지 해낸다.", "내면에서 '이렇게 해야 한다'는 비판적인 목소리가 자주 들린다.", "도덕적이고 윤리적인 삶을 사는 것이 나의 최우선 과제다.",
+            "나는 다른 사람들을 돕는 것에서 큰 기쁨을 느낀다.", "사람들이 나를 필요로 하고 나에게 의지할 때 존재감을 느낀다.", "나는 다른 사람의 감정과 필요를 직관적으로 잘 파악한다.", "때로는 내 자신의 필요보다 다른 사람의 필요를 먼저 챙긴다.", "나는 따뜻하고 친절하며 다가가기 쉬운 사람이다.", "다른 사람들에게 인정받고 사랑받는 것이 중요하다.", "관계가 틀어지거나 누군가 나를 거절할까 봐 두렵다.", "힘들어하는 사람을 보면 그냥 지나치기 어렵다.", "사람들에게 좋은 사람이 되기 위해 많은 노력을 기울인다.",
+            "나는 목표를 세우고 그것을 달성하는 데 능숙하다.", "다른 사람들에게 성공적이고 유능한 사람으로 보이고 싶다.", "결과와 성과가 과정보다 더 중요하다고 생각할 때가 많다.", "상황에 맞춰 내 이미지와 행동을 유연하게 바꿀 수 있다.", "나는 경쟁을 즐기며 항상 최고가 되고 싶어 한다.", "비효율적이거나 시간 낭비하는 것을 매우 싫어한다.", "내 감정보다는 일과 성취에 더 집중하는 편이다.", "성공하지 못하거나 실패자로 여겨지는 것에 대한 두려움이 있다.", "사람들은 나의 능력과 성취를 보고 나를 평가한다고 믿는다.",
+            "나는 남들과 다른 나만의 고유한 정체성을 가지고 있다고 느낀다.", "평범하고 일상적인 것보다는 특별하고 깊이 있는 것을 원한다.", "내 감정은 매우 복잡하고 깊어서 다른 사람들이 완전히 이해하기 어렵다.", "아름다움, 예술, 그리고 감정적인 표현에 끌린다.", "가끔은 멜랑콜리(우울감)나 슬픔에 빠져있는 것을 즐기기도 한다.", "내 삶에 무언가 중요한 것이 빠져있다는 느낌을 종종 받는다.", "진정성 없는 얕은 인간관계를 피하는 편이다.", "다른 사람들이 가진 평범한 행복을 부러워할 때가 있다.", "나는 상상력이 풍부하고 내면 세계에 집중하는 시간이 많다.",
+            "나는 지식과 정보를 수집하고 분석하는 것을 즐긴다.", "충분한 지식과 이해 없이는 행동에 나서기 꺼려진다.", "사람들과 너무 많은 시간을 보내면 에너지가 고갈되어 혼자만의 시간이 필요하다.", "나는 감정적으로 휘둘리기보다는 객관적이고 논리적으로 상황을 본다.", "내 사생활과 개인적인 공간을 침해받는 것을 매우 싫어한다.", "세상이 어떻게 돌아가는지 근본적인 원리를 파악하고 싶다.", "다른 사람들에게 의존하지 않고 스스로 독립적으로 살고 싶다.", "내가 가진 능력이나 지식이 부족해질까 봐 걱정한다.", "조용히 관찰하며 상황의 전체적인 그림을 파악하는 데 능숙하다.",
+            "나는 미래에 일어날 수 있는 최악의 상황에 대해 자주 생각하고 대비한다.", "신뢰할 수 있는 사람이나 권위, 조직에 속해 있을 때 안정감을 느낀다.", "중요한 결정을 내리기 전에 사람들의 의견을 묻고 확인받고 싶어 한다.", "나는 책임감이 강하고 나에게 주어진 의무를 성실히 수행한다.", "상대방의 숨겨진 의도나 위험 요소를 잘 파악하는 편이다.", "안전과 안정성을 위협받는 상황을 매우 두려워한다.", "불안과 의심이 많아 어떤 것을 완전히 믿기까지 시간이 걸린다.", "규칙이나 절차가 명확하지 않으면 불안함을 느낀다.", "내가 믿는 사람이나 집단에 대해서는 강한 충성심을 보인다.",
+            "나는 새롭고 흥미로운 경험을 찾는 데 항상 열정적이다.", "부정적인 감정이나 고통스러운 상황은 피하고 긍정적인 것에 집중하려 한다.", "호기심이 많고 다양한 분야에 관심을 가지고 있다.", "하나의 일에 집중하기보다는 여러 가지 일을 동시에 벌이는 경우가 많다.", "나는 자유와 자발성을 중시하며 얽매이는 것을 싫어한다.", "에너지가 넘치고 낙천적이며 사람들에게 즐거움을 주는 편이다.", "기회를 놓치거나 지루해지는 것에 대한 두려움이 있다.", "계획을 끝까지 마무리하기 전에 새로운 아이디어에 매료되곤 한다.", "미래의 즐거운 계획을 세우는 것만으로도 기분이 좋아진다.",
+            "나는 내 삶을 스스로 통제하고 주도권을 쥐는 것이 중요하다.", "불의를 보거나 약자가 괴롭힘을 당하는 것을 참지 못한다.", "직설적이고 솔직하게 내 의견을 표현하며 대립을 두려워하지 않는다.", "다른 사람에게 지배당하거나 약점을 잡히는 것을 극도로 꺼린다.", "어려운 상황에서도 흔들리지 않고 강인함을 유지하려 노력한다.", "에너지가 강하고 사람들에게 리더 역할을 맡는 경우가 많다.", "나의 방식대로 밀어붙이는 경향이 있어 가끔 위압적이라는 말을 듣는다.", "결단력이 빠르고 행동 중심적이다.", "내가 사랑하고 보호해야 할 사람들을 위해서는 어떤 일도 할 수 있다.",
+            "나는 주변 사람들과 갈등 없이 평화롭게 지내는 것을 가장 중요하게 생각한다.", "나의 의견을 내세우기보다는 다른 사람들의 의견에 맞추는 편이다.", "긴장이나 대립 상황을 피하기 위해 문제를 회피하거나 미루기도 한다.", "모든 관점을 이해할 수 있어 결정 내리기가 어려울 때가 많다.", "느긋하고 수용적이며 사람들에게 편안함을 준다는 평가를 받는다.", "내면의 고요함과 평화로운 상태가 깨지는 것을 싫어한다.", "나의 필요와 욕구에 집중하기보다는 환경에 융화되려 한다.", "강렬한 감정을 표현하는 것을 억제하고 항상 일정한 상태를 유지하려 한다.", "다른 사람들과 연결되어 있다는 소속감과 안정감을 원한다."
+        ];
+
+        let personalityQuestions = [];
+        let qIdx = 1;
+        // 81 문항 생성
+        for (let i = 0; i < 9; i++) {
+            for (let type = 1; type <= 9; type++) {
+                personalityQuestions.push({ id: qIdx++, type: type, text: TEST_QUESTIONS[(type-1)*9 + i] });
+            }
+        }
+
+        const ATTACHMENT_QUESTIONS = [
+            { id: 1, text: '내가 얼마나 가까워지고 싶어 하는지 알면 사람들이 실망할까 봐 걱정된다.' },
+            { id: 2, text: '나는 사람들과 가까워지는 것이 비교적 편안하다.' },
+            { id: 3, text: '나는 다른 사람들에게 의지하는 것이 편안하다.' },
+            { id: 4, text: '나는 다른 사람들이 나에게 의지하는 것이 편안하다.' },
+            { id: 5, text: '나는 버림받을까 봐 별로 걱정하지 않는다.' }
+        ];
+
+        // --- STATE MANAGEMENT ---
+        let state = {
+            currentView: 'home',
+            user: null,
+            role: null, // 'participant' or 'admin'
+            activeTest: null,
+            userInfo: { name: '', birthDate: '', phone: '' },
+            answers: {},
+            shapeRanks: ['동그라미', '세모', '네모', 'S자', '별', '십자가'],
+            lifeGraphData: { age10: 0, age20: 0, age30: 0, age40: 0, age50: 0 },
+            participantsList: [],
+            viewingResultData: null,
+        };
+
+        let chartInstance = null;
+        let lifeChartInstance = null;
+        let unsubscribeDb = null;
+
+        const ICONS = {
+            bridge: `<div class="w-8 h-8 rounded-lg bridge-gradient-bg flex items-center justify-center shadow-md text-white font-black text-sm tracking-tighter">MB</div>`,
+            home: `&#127968;`, users: `&#128101;`, list: `&#128203;`, user: `&#128100;`, 
+            check: `&#10004;`, arrowRight: `&#10140;`, chart: `&#128202;`, shapes: `&#128310;`, heart: `&#10084;&#65039;`, brain: `&#129504;`, activity: `&#128200;`, star: `&#11088;`, quote: `&#10077;`, network: `&#128423;`
+        };
+
+        // --- FIREBASE LISTENERS ---
+        function setupDashboardListener() {
+            if (!state.user || !db || !appId || state.role !== 'admin') return;
+            if (unsubscribeDb) unsubscribeDb();
+            const participantsRef = collection(db, 'artifacts', appId, 'public', 'data', 'mindbridge_results');
+            unsubscribeDb = onSnapshot(participantsRef, (snapshot) => {
+                const fetched = [];
+                snapshot.forEach(doc => fetched.push({ id: doc.id, ...doc.data() }));
+                fetched.sort((a, b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0));
+                state.participantsList = fetched;
+                if (state.currentView === 'dashboard') render();
+            }, (error) => console.error("Firestore listen error", error));
+        }
+
+        // --- RENDER ENGINE ---
+        function render() {
+            const app = document.getElementById('app');
+            app.innerHTML = '';
+            
+            if (state.currentView === 'home') app.innerHTML = getHomeHTML();
+            else if (state.currentView === 'login') app.innerHTML = getLoginHTML();
+            else if (state.currentView === 'dashboard') app.innerHTML = getDashboardHTML();
+            else if (state.currentView === 'participant') app.innerHTML = getParticipantHTML();
+            else if (state.currentView === 'test') {
+                app.innerHTML = getTestHTML();
+                if(state.activeTest === 'lifegraph') setTimeout(initLifeChart, 100);
+            }
+            else if (state.currentView === 'submitSuccess') app.innerHTML = getSubmitSuccessHTML();
+            else if (state.currentView === 'result') {
+                app.innerHTML = getResultHTML();
+                if(state.viewingResultData && state.viewingResultData.testType === 'personality') setTimeout(initChart, 100);
+            }
+            attachEventListeners();
+        }
+
+        function setView(view, payload = null) {
+            state.currentView = view;
+            if (view === 'test' && payload) state.activeTest = payload;
+            window.scrollTo(0, 0);
+            render();
+        }
+
+        // --- HTML TEMPLATES ---
+
+        function getHeaderHTML() {
+            const rightMenu = state.role === 'admin' 
+                ? `<button class="bg-white/50 hover:bg-white text-slate-800 border border-slate-200 px-4 py-2 rounded-full font-bold text-sm flex items-center gap-2 transition action-go-dashboard shadow-sm">${ICONS.user} 관리자</button>`
+                : state.role === 'participant' 
+                    ? `<button class="bridge-gradient-bg text-white px-5 py-2 rounded-full font-bold text-sm flex items-center gap-2 action-go-participant shadow-md">${ICONS.user} ${state.userInfo.name}님</button>`
+                    : `<button class="text-slate-600 font-bold hover:text-indigo-600 transition action-go-login">진단 참여하기</button>`;
+
+            return `
+                <header class="glass-card py-4 px-6 md:px-10 flex justify-between items-center sticky top-0 z-50">
+                    <div class="flex items-center gap-3 cursor-pointer action-go-home group">
+                        ${ICONS.bridge}
+                        <span class="text-2xl font-extrabold tracking-tight bridge-gradient-text">Mind Bridge</span>
+                    </div>
+                    <nav class="hidden md:flex gap-6 items-center">
+                        <button class="text-slate-500 hover:text-slate-800 font-bold transition-colors action-go-home">홈</button>
+                        ${rightMenu}
+                    </nav>
+                </header>
+            `;
+        }
+
+        function getHomeHTML() {
+            return `
+                <div class="flex flex-col min-h-screen">
+                    <div class="blob bg-orange-300 w-96 h-96 top-20 left-10"></div>
+                    <div class="blob bg-purple-300 w-[500px] h-[500px] bottom-0 right-0" style="animation-delay: -2s"></div>
+                    <div class="blob bg-cyan-200 w-80 h-80 top-1/2 left-1/3" style="animation-delay: -4s"></div>
+                    
+                    ${getHeaderHTML()}
+                    
+                    <!-- 1. Hero Section -->
+                    <main class="flex flex-col items-center justify-center text-center px-6 py-20 md:py-32 relative z-10">
+                        <div class="glass-card inline-flex items-center gap-2 px-5 py-2.5 rounded-full text-slate-700 font-bold text-sm mb-8 shadow-sm">
+                            <span class="w-2.5 h-2.5 rounded-full bridge-gradient-bg animate-pulse"></span>
+                            마인드 브릿지 B2B 기업 통합 심리 진단
+                        </div>
+                        <h1 class="text-5xl md:text-7xl font-black text-slate-900 tracking-tight mb-6 max-w-5xl leading-[1.2] drop-shadow-sm">
+                            연구된 데이터와 생생한 현장을<br class="hidden md:block"/>
+                            <span class="bridge-gradient-text">아름답게 연결합니다.</span>
+                        </h1>
+                        <p class="text-lg md:text-2xl text-slate-600 mb-10 max-w-2xl font-medium leading-relaxed">
+                            기업 강연부터 조직 시너지 분석까지.<br/>데이터를 통해 사람과 조직을 이해하는 따뜻한 다리가 됩니다.
+                        </p>
+                        
+                        <div class="flex flex-col sm:flex-row gap-4 items-center justify-center w-full max-w-lg mx-auto mb-10">
+                            <button class="w-full sm:w-auto px-10 py-5 bridge-gradient-bg text-white rounded-full font-bold text-xl transition-all shadow-xl hover:shadow-2xl hover:-translate-y-1 flex items-center justify-center gap-2 action-go-login">
+                                진단 참여하기 ${ICONS.arrowRight}
+                            </button>
+                            <button class="w-full sm:w-auto px-8 py-5 glass-card text-slate-700 rounded-full font-bold text-lg hover:bg-white transition-all flex items-center justify-center gap-2 action-admin-login">
+                                관리자 대시보드
+                            </button>
+                        </div>
+
+                        <!-- 누적 참여자 통계 -->
+                        <div class="flex items-center justify-center gap-4 bg-white/60 px-6 py-3 rounded-full border border-white shadow-sm backdrop-blur-md">
+                            <div class="flex -space-x-3">
+                                <div class="w-10 h-10 rounded-full border-2 border-white bg-indigo-100 flex items-center justify-center text-xs font-bold text-indigo-600">A사</div>
+                                <div class="w-10 h-10 rounded-full border-2 border-white bg-emerald-100 flex items-center justify-center text-xs font-bold text-emerald-600">B사</div>
+                                <div class="w-10 h-10 rounded-full border-2 border-white bg-rose-100 flex items-center justify-center text-xs font-bold text-rose-600">C사</div>
+                                <div class="w-10 h-10 rounded-full border-2 border-white bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-600">+</div>
+                            </div>
+                            <div class="text-left">
+                                <div class="text-sm font-bold text-slate-500 leading-tight">누적 참여자</div>
+                                <div class="text-lg font-black text-slate-800 leading-tight">3,000+ 명 돌파</div>
+                            </div>
+                        </div>
+                    </main>
+
+                    <!-- 2. About Us / Identity Section -->
+                    <section class="py-20 bg-white relative z-10 border-y border-slate-100">
+                        <div class="max-w-6xl mx-auto px-6 grid grid-cols-1 md:grid-cols-2 gap-16 items-center">
+                            <div class="order-2 md:order-1 relative">
+                                <div class="absolute inset-0 bg-gradient-to-tr from-indigo-200 to-purple-200 rounded-[2.5rem] transform -rotate-3 scale-105 z-0"></div>
+                                <div class="relative z-10 bg-slate-100 rounded-[2.5rem] overflow-hidden shadow-2xl border-4 border-white h-80 md:h-[450px] flex items-center justify-center text-slate-400 font-medium">
+                                    [기업 워크샵에서 밝게 웃으며 강연에 참여하는 동양인 직장인들의 모습의 사진]
+                                </div>
+                            </div>
+                            <div class="order-1 md:order-2">
+                                <div class="text-indigo-600 font-bold mb-4 uppercase tracking-widest text-sm">About Us</div>
+                                <h2 class="text-4xl font-black text-slate-900 mb-6 leading-tight">현장과 맞닿아 있는<br/><span class="bridge-gradient-text">조직 문화 솔루션</span></h2>
+                                <p class="text-lg text-slate-600 font-medium leading-relaxed mb-6">
+                                    마인드 브릿지는 단순히 텍스트 형태의 심리 검사 결과만 제공하는 곳이 아닙니다. 국내 다수의 기업 및 기관에서 수많은 구성원들을 직접 만나 <strong>전문적인 강연과 현장 밀착형 워크샵</strong>을 진행합니다.
+                                </p>
+                                <p class="text-lg text-slate-600 font-medium leading-relaxed mb-8">
+                                    저희가 제공하는 데이터와 분석 자료는 곧바로 팀 빌딩, 리더십 개발, 조직 소통 강화에 적용될 수 있는 가장 실용적인 인사이트가 됩니다.
+                                </p>
+                                <ul class="space-y-3">
+                                    <li class="flex items-center gap-3 text-slate-700 font-bold"><div class="text-emerald-500">${ICONS.check}</div> 데이터 기반 맞춤형 워크샵 진행</li>
+                                    <li class="flex items-center gap-3 text-slate-700 font-bold"><div class="text-emerald-500">${ICONS.check}</div> 전직원 성향 분포 및 시너지 리포트 제공</li>
+                                    <li class="flex items-center gap-3 text-slate-700 font-bold"><div class="text-emerald-500">${ICONS.check}</div> 리더십/소통 스킬업 전문 강연</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- 3. 6 Tools Section -->
+                    <section class="py-24 relative z-10 bg-slate-50/50">
+                        <div class="max-w-6xl mx-auto px-6 text-center mb-16">
+                            <h2 class="text-4xl font-black text-slate-900 mb-4">6가지 다차원 진단 도구</h2>
+                            <p class="text-xl text-slate-600 font-medium">마인드 브릿지가 제공하는 입체적인 심리 분석 및 조직 진단 솔루션입니다.</p>
+                        </div>
+                        <div class="max-w-6xl mx-auto px-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                            <!-- Tool 1 -->
+                            <div class="glass-card p-8 rounded-[2rem] text-center hover:-translate-y-2 transition-transform shadow-md border border-white">
+                                <div class="w-16 h-16 mx-auto rounded-2xl bridge-gradient-bg flex items-center justify-center text-white text-2xl mb-6">${ICONS.list}</div>
+                                <h3 class="text-xl font-bold text-slate-800 mb-3">1. 다차원 성향 분석</h3>
+                                <p class="text-slate-500 font-medium leading-relaxed">9가지 성향 유형과 3개 센터(장/가슴/머리)의 조합을 통해 근본적인 동기를 분석합니다. (81문항)</p>
+                            </div>
+                            <!-- Tool 2 -->
+                            <div class="glass-card p-8 rounded-[2rem] text-center hover:-translate-y-2 transition-transform shadow-md border border-white">
+                                <div class="w-16 h-16 mx-auto rounded-2xl bg-purple-500 flex items-center justify-center text-white text-2xl mb-6">${ICONS.shapes}</div>
+                                <h3 class="text-xl font-bold text-slate-800 mb-3">2. 6도형 심리 검사</h3>
+                                <p class="text-slate-500 font-medium leading-relaxed">선호하는 도형의 배열 순서를 통해 현재의 무의식적 심리 상태와 기질을 직관적으로 진단합니다.</p>
+                            </div>
+                            <!-- Tool 3 -->
+                            <div class="glass-card p-8 rounded-[2rem] text-center hover:-translate-y-2 transition-transform shadow-md border border-white">
+                                <div class="w-16 h-16 mx-auto rounded-2xl bg-emerald-500 flex items-center justify-center text-white text-2xl mb-6">${ICONS.activity}</div>
+                                <h3 class="text-xl font-bold text-slate-800 mb-3">3. 인생그래프</h3>
+                                <p class="text-slate-500 font-medium leading-relaxed">과거부터 현재까지의 삶의 굴곡을 시각화하여 개인의 행동 패턴과 터닝포인트를 회고합니다.</p>
+                            </div>
+                            <!-- Tool 4 -->
+                            <div class="glass-card p-8 rounded-[2rem] text-center hover:-translate-y-2 transition-transform shadow-md border border-white">
+                                <div class="w-16 h-16 mx-auto rounded-2xl bg-rose-500 flex items-center justify-center text-white text-2xl mb-6">${ICONS.heart}</div>
+                                <h3 class="text-xl font-bold text-slate-800 mb-3">4. 애착유형 검사</h3>
+                                <p class="text-slate-500 font-medium leading-relaxed">성인 애착 이론을 바탕으로 대인관계에서 나타나는 정서적 안정성과 불안/회피 패턴을 파악합니다.</p>
+                            </div>
+                            <!-- Tool 5 -->
+                            <div class="glass-card p-8 rounded-[2rem] text-center hover:-translate-y-2 transition-transform shadow-md border border-white">
+                                <div class="w-16 h-16 mx-auto rounded-2xl bg-orange-500 flex items-center justify-center text-white text-2xl mb-6">${ICONS.brain}</div>
+                                <h3 class="text-xl font-bold text-slate-800 mb-3">5. 핵심감정 진단</h3>
+                                <p class="text-slate-500 font-medium leading-relaxed">스트레스 상황에서 가장 크게 작용하는 기저 감정을 파악하고 건강한 해소 방법을 제시합니다.</p>
+                            </div>
+                            <!-- Tool 6 -->
+                            <div class="glass-card p-8 rounded-[2rem] text-center hover:-translate-y-2 transition-transform shadow-md border border-white">
+                                <div class="w-16 h-16 mx-auto rounded-2xl bg-indigo-500 flex items-center justify-center text-white text-2xl mb-6">${ICONS.network}</div>
+                                <h3 class="text-xl font-bold text-slate-800 mb-3">6. 조직 관계 역학 분석</h3>
+                                <p class="text-slate-500 font-medium leading-relaxed">개별 진단 데이터를 취합하여 팀 내 갈등 요소를 파악하고 시너지를 낼 수 있는 최적의 방안을 제안합니다.</p>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- 4. Testimonials / Reviews -->
+                    <section class="py-24 bg-white relative z-10 border-y border-slate-100">
+                        <div class="max-w-6xl mx-auto px-6">
+                            <div class="text-center mb-16">
+                                <h2 class="text-4xl font-black text-slate-900 mb-4">함께 성장한 기업들의 이야기</h2>
+                                <p class="text-xl text-slate-600 font-medium">마인드 브릿지 솔루션을 경험한 고객들의 생생한 리뷰입니다.</p>
+                            </div>
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+                                <div class="bg-slate-50 rounded-[2rem] p-8 border border-slate-200">
+                                    <div class="text-yellow-400 text-xl mb-4">${ICONS.star}${ICONS.star}${ICONS.star}${ICONS.star}${ICONS.star}</div>
+                                    <div class="text-3xl text-indigo-200 mb-2">${ICONS.quote}</div>
+                                    <p class="text-slate-700 font-medium leading-relaxed mb-6">리더십 워크샵에서 성향 분석 데이터를 활용했는데, 팀원들의 숨겨진 동기를 파악하고 맞춤형으로 소통하는 데 정말 큰 도움이 되었습니다. 딱딱한 이론이 아니라 현장 적용이 바로 가능했어요.</p>
+                                    <div class="flex items-center gap-3 border-t border-slate-200 pt-4">
+                                        <div class="w-10 h-10 rounded-full bg-indigo-100 text-indigo-700 font-bold flex items-center justify-center">K</div>
+                                        <div>
+                                            <div class="font-bold text-slate-800">김OO 팀장</div>
+                                            <div class="text-xs text-slate-500">글로벌 IT 기업 영업본부</div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="bg-slate-50 rounded-[2rem] p-8 border border-slate-200">
+                                    <div class="text-yellow-400 text-xl mb-4">${ICONS.star}${ICONS.star}${ICONS.star}${ICONS.star}${ICONS.star}</div>
+                                    <div class="text-3xl text-emerald-200 mb-2">${ICONS.quote}</div>
+                                    <p class="text-slate-700 font-medium leading-relaxed mb-6">개인 심층 컨설팅을 받은 느낌이었습니다. 내 안의 핵심 감정과 스트레스 패턴을 객관적인 데이터로 보니 나침반을 얻은 것 같았습니다. 직원들의 반응이 역대급으로 좋았던 강연이었습니다.</p>
+                                    <div class="flex items-center gap-3 border-t border-slate-200 pt-4">
+                                        <div class="w-10 h-10 rounded-full bg-emerald-100 text-emerald-700 font-bold flex items-center justify-center">L</div>
+                                        <div>
+                                            <div class="font-bold text-slate-800">이OO 대표</div>
+                                            <div class="text-xs text-slate-500">핀테크 스타트업</div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="bg-slate-50 rounded-[2rem] p-8 border border-slate-200">
+                                    <div class="text-yellow-400 text-xl mb-4">${ICONS.star}${ICONS.star}${ICONS.star}${ICONS.star}${ICONS.star}</div>
+                                    <div class="text-3xl text-rose-200 mb-2">${ICONS.quote}</div>
+                                    <p class="text-slate-700 font-medium leading-relaxed mb-6">단순한 성격 테스트인 줄 알았는데, 다차원 트라이타입 분석까지 제공되어 훨씬 정교하게 조직 문화를 진단할 수 있었습니다. 다채롭고 예쁜 결과 UI 덕분에 직원들 참여도도 매우 높았어요.</p>
+                                    <div class="flex items-center gap-3 border-t border-slate-200 pt-4">
+                                        <div class="w-10 h-10 rounded-full bg-rose-100 text-rose-700 font-bold flex items-center justify-center">P</div>
+                                        <div>
+                                            <div class="font-bold text-slate-800">박OO 매니저</div>
+                                            <div class="text-xs text-slate-500">제조업 HR팀</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- 5. Pricing / Subscription -->
+                    <section class="py-24 relative z-10 bg-slate-900 text-white">
+                        <div class="max-w-6xl mx-auto px-6">
+                            <div class="text-center mb-16">
+                                <h2 class="text-4xl font-black mb-4">서비스 플랜 안내</h2>
+                                <p class="text-xl text-slate-400 font-medium">조직의 규모와 필요에 맞는 구독 및 컨설팅 플랜을 선택하세요.</p>
+                            </div>
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-5xl mx-auto">
+                                <!-- Basic -->
+                                <div class="bg-slate-800 rounded-[2rem] p-8 border border-slate-700 flex flex-col">
+                                    <h3 class="text-2xl font-bold text-white mb-2">Standard</h3>
+                                    <p class="text-slate-400 mb-6 text-sm">개인 및 소규모 팀 진단용</p>
+                                    <div class="text-4xl font-black text-white mb-8">₩29,000<span class="text-lg text-slate-500 font-normal"> / 월</span></div>
+                                    <ul class="space-y-4 flex-1 mb-8">
+                                        <li class="flex items-center gap-3 text-slate-300 font-medium"><div class="text-emerald-400">${ICONS.check}</div> 최대 10명 결과 조회</li>
+                                        <li class="flex items-center gap-3 text-slate-300 font-medium"><div class="text-emerald-400">${ICONS.check}</div> 다차원 성향 분석 도구 제공</li>
+                                        <li class="flex items-center gap-3 text-slate-300 font-medium"><div class="text-emerald-400">${ICONS.check}</div> 기본 PDF 결과 리포트</li>
+                                    </ul>
+                                    <button class="w-full py-4 rounded-xl border-2 border-slate-600 text-white font-bold hover:bg-slate-700 transition">선택하기</button>
+                                </div>
+                                <!-- Pro -->
+                                <div class="bridge-gradient-bg rounded-[2rem] p-1 transform scale-105 shadow-2xl relative">
+                                    <div class="absolute top-0 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-white text-indigo-600 font-black px-4 py-1 rounded-full text-sm shadow-md">가장 인기</div>
+                                    <div class="bg-slate-900 rounded-[1.8rem] p-8 h-full flex flex-col">
+                                        <h3 class="text-2xl font-bold text-white mb-2">Business Pro</h3>
+                                        <p class="text-slate-400 mb-6 text-sm">중소기업 전체 구성원 관리용</p>
+                                        <div class="text-4xl font-black text-white mb-8">₩99,000<span class="text-lg text-slate-500 font-normal"> / 월</span></div>
+                                        <ul class="space-y-4 flex-1 mb-8">
+                                            <li class="flex items-center gap-3 text-slate-200 font-bold"><div class="text-emerald-400">${ICONS.check}</div> 최대 100명 결과 조회</li>
+                                            <li class="flex items-center gap-3 text-slate-200 font-bold"><div class="text-emerald-400">${ICONS.check}</div> 6가지 진단 도구 무제한 제공</li>
+                                            <li class="flex items-center gap-3 text-slate-200 font-bold"><div class="text-emerald-400">${ICONS.check}</div> 심층 트라이타입 및 조직 통계 제공</li>
+                                            <li class="flex items-center gap-3 text-slate-200 font-bold"><div class="text-emerald-400">${ICONS.check}</div> 관리자 실시간 대시보드 접근</li>
+                                        </ul>
+                                        <button class="w-full py-4 rounded-xl bg-white text-indigo-600 font-black hover:bg-slate-100 transition shadow-lg action-go-login">지금 시작하기</button>
+                                    </div>
+                                </div>
+                                <!-- Enterprise -->
+                                <div class="bg-slate-800 rounded-[2rem] p-8 border border-slate-700 flex flex-col">
+                                    <h3 class="text-2xl font-bold text-white mb-2">Enterprise</h3>
+                                    <p class="text-slate-400 mb-6 text-sm">오프라인 강연/컨설팅 포함 플랜</p>
+                                    <div class="text-4xl font-black text-white mb-8">별도 문의</div>
+                                    <ul class="space-y-4 flex-1 mb-8">
+                                        <li class="flex items-center gap-3 text-slate-300 font-medium"><div class="text-emerald-400">${ICONS.check}</div> 인원 무제한 계정 생성</li>
+                                        <li class="flex items-center gap-3 text-slate-300 font-medium"><div class="text-emerald-400">${ICONS.check}</div> 전직원 조직 관계 역학 시너지 리포트</li>
+                                        <li class="flex items-center gap-3 text-white font-bold"><div class="text-emerald-400">${ICONS.check}</div> 마인드 브릿지 전문가 방문 워크샵 (연 2회)</li>
+                                    </ul>
+                                    <button class="w-full py-4 rounded-xl border-2 border-slate-600 text-white font-bold hover:bg-slate-700 transition">문의하기</button>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- Footer -->
+                    <footer class="bg-white py-10 border-t border-slate-200 text-center relative z-10">
+                        <div class="text-2xl font-extrabold tracking-tight bridge-gradient-text mb-4">Mind Bridge</div>
+                        <p class="text-slate-500 font-medium text-sm">© 2026 Mind Bridge Analytics. All rights reserved.</p>
+                    </footer>
+                </div>
+            `;
+        }
+
+        function getLoginHTML() {
+            return `
+                <div class="min-h-screen flex flex-col relative">
+                    <div class="blob bg-indigo-200 w-96 h-96 top-0 left-0"></div>
+                    ${getHeaderHTML()}
+                    <div class="flex-1 flex items-center justify-center p-6 relative z-10">
+                        <div class="glass-card w-full max-w-md rounded-[2.5rem] p-10 shadow-2xl border border-white">
+                            <div class="text-center mb-10">
+                                <h2 class="text-3xl font-black text-slate-800 mb-2 bridge-gradient-text">정보 입력</h2>
+                                <p class="text-slate-500 font-medium">안전한 데이터 저장을 위해 정보를 입력해주세요.</p>
+                            </div>
+                            <form id="participant-login-form" class="space-y-6">
+                                <div>
+                                    <label class="block text-sm font-bold text-slate-600 mb-2 ml-1">이름</label>
+                                    <input type="text" id="login-name" required class="w-full px-5 py-4 rounded-2xl border-2 border-white bg-white/60 focus:bg-white focus:border-indigo-400 outline-none transition font-medium" placeholder="홍길동" />
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-bold text-slate-600 mb-2 ml-1">생년월일</label>
+                                    <input type="date" id="login-birthdate" required class="w-full px-5 py-4 rounded-2xl border-2 border-white bg-white/60 focus:bg-white focus:border-indigo-400 outline-none transition font-medium text-slate-600" />
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-bold text-slate-600 mb-2 ml-1">전화번호</label>
+                                    <input type="tel" id="login-phone" required class="w-full px-5 py-4 rounded-2xl border-2 border-white bg-white/60 focus:bg-white focus:border-indigo-400 outline-none transition font-medium" placeholder="010-0000-0000" />
+                                </div>
+                                <button type="submit" class="w-full mt-8 bridge-gradient-bg text-white py-4 rounded-2xl font-bold text-lg transition-all shadow-lg hover:shadow-xl hover:-translate-y-1 flex justify-center items-center gap-2">
+                                    라운지 입장 ${ICONS.arrowRight}
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function getParticipantHTML() {
+            return `
+                <div class="min-h-screen flex flex-col relative">
+                    <div class="blob bg-purple-100 w-full h-96 top-0 left-0"></div>
+                    ${getHeaderHTML()}
+                    <main class="flex-1 p-6 md:p-12 relative z-10">
+                        <div class="max-w-6xl mx-auto">
+                            <div class="mb-12">
+                                <h1 class="text-4xl font-black text-slate-900 mb-3"><span class="bridge-gradient-text">${state.userInfo.name}</span>님, 환영합니다</h1>
+                                <p class="text-slate-600 text-lg font-medium">마인드 브릿지에서 제공하는 5가지 주요 진단을 진행하실 수 있습니다.</p>
+                            </div>
+                            
+                            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                <div data-test="personality" class="action-start-test glass-card rounded-[2rem] p-8 hover:shadow-xl hover:-translate-y-1 transition-all cursor-pointer group border-2 border-transparent hover:border-indigo-300 flex flex-col h-full">
+                                    <div class="w-14 h-14 rounded-2xl bridge-gradient-bg flex items-center justify-center text-white text-2xl mb-6 shadow-md">${ICONS.list}</div>
+                                    <h3 class="text-xl font-bold text-slate-800 mb-2">다차원 성향 분석</h3>
+                                    <p class="text-slate-500 text-sm leading-relaxed mb-6 flex-1">9가지 성향 유형을 바탕으로 본질적인 동기와 트라이타입을 분석합니다. (총 81문항)</p>
+                                    <div class="text-indigo-600 font-bold text-sm flex items-center gap-1 mt-auto">시작하기 ${ICONS.arrowRight}</div>
+                                </div>
+                                
+                                <div data-test="sixtypes" class="action-start-test glass-card rounded-[2rem] p-8 hover:shadow-xl hover:-translate-y-1 transition-all cursor-pointer group border-2 border-transparent hover:border-purple-300 flex flex-col h-full">
+                                    <div class="w-14 h-14 rounded-2xl bg-purple-500 flex items-center justify-center text-white text-2xl mb-6 shadow-md">${ICONS.shapes}</div>
+                                    <h3 class="text-xl font-bold text-slate-800 mb-2">6도형 심리 검사</h3>
+                                    <p class="text-slate-500 text-sm leading-relaxed mb-6 flex-1">도형을 선호하는 순서대로 배열하여 무의식적인 심리 상태를 진단합니다.</p>
+                                    <div class="text-purple-600 font-bold text-sm flex items-center gap-1 mt-auto">시작하기 ${ICONS.arrowRight}</div>
+                                </div>
+
+                                <div data-test="lifegraph" class="action-start-test glass-card rounded-[2rem] p-8 hover:shadow-xl hover:-translate-y-1 transition-all cursor-pointer group border-2 border-transparent hover:border-emerald-300 flex flex-col h-full">
+                                    <div class="w-14 h-14 rounded-2xl bg-emerald-500 flex items-center justify-center text-white text-2xl mb-6 shadow-md">${ICONS.activity}</div>
+                                    <h3 class="text-xl font-bold text-slate-800 mb-2">인생그래프</h3>
+                                    <p class="text-slate-500 text-sm leading-relaxed mb-6 flex-1">과거의 굴곡을 시각화하여 삶의 패턴과 전환점을 스스로 회고합니다.</p>
+                                    <div class="text-emerald-600 font-bold text-sm flex items-center gap-1 mt-auto">시작하기 ${ICONS.arrowRight}</div>
+                                </div>
+
+                                <div data-test="attachment" class="action-start-test glass-card rounded-[2rem] p-8 hover:shadow-xl hover:-translate-y-1 transition-all cursor-pointer group border-2 border-transparent hover:border-rose-300 flex flex-col h-full">
+                                    <div class="w-14 h-14 rounded-2xl bg-rose-500 flex items-center justify-center text-white text-2xl mb-6 shadow-md">${ICONS.heart}</div>
+                                    <h3 class="text-xl font-bold text-slate-800 mb-2">애착유형 검사</h3>
+                                    <p class="text-slate-500 text-sm leading-relaxed mb-6 flex-1">대인관계 패턴과 정서적 안정성을 분석하여 관계 맺는 방식을 알아봅니다.</p>
+                                    <div class="text-rose-600 font-bold text-sm flex items-center gap-1 mt-auto">시작하기 ${ICONS.arrowRight}</div>
+                                </div>
+
+                                <div data-test="coreemotion" class="action-start-test glass-card rounded-[2rem] p-8 hover:shadow-xl hover:-translate-y-1 transition-all cursor-pointer group border-2 border-transparent hover:border-orange-300 flex flex-col h-full">
+                                    <div class="w-14 h-14 rounded-2xl bg-orange-500 flex items-center justify-center text-white text-2xl mb-6 shadow-md">${ICONS.brain}</div>
+                                    <h3 class="text-xl font-bold text-slate-800 mb-2">핵심감정 검사</h3>
+                                    <p class="text-slate-500 text-sm leading-relaxed mb-6 flex-1">행동 기저의 감정 동인을 파악하고 스트레스 반응을 분석합니다.</p>
+                                    <div class="text-orange-600 font-bold text-sm flex items-center gap-1 mt-auto">시작하기 ${ICONS.arrowRight}</div>
+                                </div>
+                            </div>
+                        </div>
+                    </main>
+                </div>
+            `;
+        }
+
+        function getTestHTML() {
+            let html = `<div class="min-h-screen flex flex-col"><div class="blob bg-orange-100 w-full h-64 top-0 left-0"></div>${getHeaderHTML()}<main class="flex-1 w-full max-w-4xl mx-auto p-4 md:p-8 relative z-10"><div class="pb-24 pt-4">`;
+            
+            const titles = { 'personality': '다차원 성향 분석', 'sixtypes': '6도형 심리 검사', 'lifegraph': '인생그래프', 'attachment': '애착유형 검사', 'coreemotion': '핵심감정 검사' };
+            const desc = { 'personality': '깊게 고민하기보다 처음 떠오르는 직관적인 느낌을 선택하는 것이 가장 정확합니다.', 'sixtypes': '가장 마음에 드는 순서대로 위/아래 버튼을 눌러 순위를 정해주세요.', 'lifegraph': '연령대별 삶의 만족도를 슬라이더로 조절해주세요.', 'attachment': '대인관계에서 느끼는 감정과 가장 일치하는 것을 선택하세요.', 'coreemotion': '스트레스 상황에서 가장 자주 느끼는 감정을 선택하세요.' };
+
+            html += `
+                <div class="text-center mb-10">
+                    <h1 class="text-3xl md:text-4xl font-black text-slate-900 mb-3 bridge-gradient-text">${titles[state.activeTest]}</h1>
+                    <p class="text-slate-600 text-lg font-medium">${desc[state.activeTest]}</p>
+                </div>
+            `;
+
+            if (['personality', 'attachment', 'coreemotion'].includes(state.activeTest)) {
+                const qs = state.activeTest === 'personality' ? personalityQuestions : ATTACHMENT_QUESTIONS;
+                html += `
+                    <div class="glass-card p-5 rounded-2xl shadow-sm border border-white mb-8 sticky top-[90px] z-20">
+                        <div class="flex justify-between items-end mb-2 font-bold text-sm">
+                            <span class="text-slate-600">진행률</span>
+                            <span class="text-xl text-indigo-600"><span id="progress-count">0</span> <span class="text-slate-400 text-base">/ ${qs.length}</span></span>
+                        </div>
+                        <div class="w-full bg-slate-200 rounded-full h-3 overflow-hidden">
+                            <div id="progress-bar" class="bridge-gradient-bg h-3 rounded-full transition-all duration-300 ease-out" style="width: 0%"></div>
+                        </div>
+                    </div>
+                    <div class="space-y-6">
+                `;
+                qs.forEach((q, i) => {
+                    html += `
+                        <div class="glass-card rounded-[1.5rem] p-6 md:p-8 hover:shadow-lg transition-all border border-white">
+                            <div class="flex gap-4 items-start mb-6">
+                                <div class="w-10 h-10 shrink-0 bridge-gradient-bg text-white rounded-xl flex items-center justify-center font-black text-lg shadow-sm">${i + 1}</div>
+                                <h3 class="text-lg md:text-xl font-bold text-slate-800 pt-1.5 leading-snug break-keep">${q.text}</h3>
+                            </div>
+                            <div class="flex flex-col md:flex-row gap-2">
+                                ${[1,2,3,4,5].map(val => `
+                                    <button class="radio-btn flex-1 p-4 rounded-xl text-center font-bold border-2 flex flex-col items-center justify-center gap-2 border-slate-100 bg-white text-slate-500" data-qid="${q.id}" data-val="${val}">
+                                        <div class="indicator w-6 h-6 rounded-full border-2 border-slate-300 flex items-center justify-center bg-white transition-colors"></div>
+                                        <span class="text-sm">${['전혀 아니다','아니다','보통이다','그렇다','매우 그렇다'][val-1]}</span>
+                                    </button>
+                                `).join('')}
+                            </div>
+                        </div>
+                    `;
+                });
+            } else if (state.activeTest === 'sixtypes') {
+                html += `
+                    <div class="space-y-4 max-w-2xl mx-auto" id="shape-list">
+                        ${state.shapeRanks.map((shape, i) => `
+                            <div class="flex items-center gap-4 glass-card p-5 rounded-2xl shadow-sm border border-white">
+                                <div class="text-2xl font-black text-slate-300 w-16 text-center bg-slate-50 rounded-xl py-3">${i+1}위</div>
+                                <div class="flex flex-col gap-1">
+                                    <button class="shape-up p-1.5 bg-slate-100 hover:bg-indigo-100 rounded-lg text-slate-600 transition" data-idx="${i}">▲</button>
+                                    <button class="shape-down p-1.5 bg-slate-100 hover:bg-indigo-100 rounded-lg text-slate-600 transition" data-idx="${i}">▼</button>
+                                </div>
+                                <div class="flex-1 text-center">
+                                    <span class="font-black text-indigo-700 text-2xl tracking-wider">${shape}</span>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+            } else if (state.activeTest === 'lifegraph') {
+                html += `
+                    <div class="glass-card rounded-[2rem] border border-white p-6 md:p-10 shadow-lg">
+                        <div class="chart-container mb-10">
+                            <canvas id="lifeChart"></canvas>
+                        </div>
+                        <div class="space-y-8 max-w-2xl mx-auto bg-white/50 p-6 rounded-2xl border border-white">
+                            ${['age10','age20','age30','age40','age50'].map((age, i) => `
+                                <div>
+                                    <div class="flex justify-between mb-3">
+                                        <label class="font-bold text-slate-700 text-lg">${['유년기','청소년기','20대','30대','40대 이상'][i]}</label>
+                                        <span class="font-black text-2xl text-indigo-600" id="val-${age}">${state.lifeGraphData[age]}</span>
+                                    </div>
+                                    <input type="range" id="slider-${age}" data-age="${age}" min="-100" max="100" value="${state.lifeGraphData[age]}" class="life-slider">
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                `;
+            }
+
+            html += `
+                <div class="mt-12 text-center">
+                    <button id="btn-submit-test" class="px-12 py-5 rounded-full font-black shadow-xl transition-all flex items-center justify-center gap-3 text-xl bridge-gradient-bg text-white w-full md:w-auto mx-auto transform hover:-translate-y-1 disabled:opacity-50 disabled:cursor-not-allowed">
+                        데이터 제출하기 ${ICONS.check}
+                    </button>
+                </div>
+            </div></main></div>`;
+            return html;
+        }
+
+        function getSubmitSuccessHTML() {
+            return `
+                <div class="min-h-screen flex flex-col bg-slate-50 relative">
+                    <div class="blob bg-green-200 w-full h-96 top-0 left-0"></div>
+                    ${getHeaderHTML()}
+                    <div class="flex-1 flex items-center justify-center p-6 relative z-10">
+                        <div class="glass-card max-w-lg w-full rounded-[2.5rem] p-12 text-center shadow-2xl border border-white">
+                            <div class="w-24 h-24 bg-green-100 text-green-500 rounded-full flex items-center justify-center text-5xl mx-auto mb-8 shadow-sm">
+                                ${ICONS.check}
+                            </div>
+                            <h2 class="text-3xl font-black text-slate-800 mb-4">제출이 완료되었습니다!</h2>
+                            <p class="text-slate-600 text-lg font-medium mb-10 leading-relaxed">
+                                참여해주셔서 감사합니다.<br/>안전하게 저장된 데이터와 상세 성향 분석 결과는<br/><span class="text-indigo-600 font-bold">관리자 전용 대시보드</span>에서 통합 분석됩니다.
+                            </p>
+                            <button class="w-full bridge-gradient-bg text-white py-4 rounded-2xl font-bold text-lg transition-all shadow-md hover:shadow-lg action-go-participant">
+                                다른 진단 참여하기
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function getDashboardHTML() {
+            if(state.role !== 'admin') return '<div class="p-10 text-center font-bold text-xl">접근 권한이 없습니다. 메인으로 돌아가주세요.</div>';
+
+            const listHtml = state.participantsList.length === 0 
+                ? `<div class="p-16 text-center text-slate-500 font-medium">아직 수집된 누적 데이터가 없습니다.</div>`
+                : state.participantsList.map(p => {
+                    const dateStr = p.createdAt && p.createdAt.toMillis ? new Date(p.createdAt.toMillis()).toLocaleString() : '방금 전';
+                    const testNames = { 'personality': '다차원 성향', 'sixtypes': '6도형', 'lifegraph': '인생그래프', 'attachment': '애착유형', 'coreemotion': '핵심감정' };
+                    return `
+                    <div class="grid grid-cols-1 md:grid-cols-6 gap-4 p-5 border-b border-slate-100 items-center hover:bg-white/80 transition font-medium text-sm">
+                        <div class="font-bold text-slate-800 text-base">${p.name}</div>
+                        <div class="text-slate-600">${p.phone || '-'}</div>
+                        <div class="text-slate-600">${p.birthDate || '-'}</div>
+                        <div><span class="px-3 py-1.5 bg-indigo-50 border border-indigo-100 text-indigo-700 rounded-lg font-bold">${testNames[p.testType] || p.testType}</span></div>
+                        <div class="text-slate-500 text-xs">${dateStr}</div>
+                        <div class="flex md:justify-end">
+                            <button class="action-view-result px-4 py-2 bg-white border border-slate-300 rounded-lg text-sm font-bold text-slate-700 hover:bg-slate-50 hover:border-indigo-400 transition shadow-sm w-full md:w-auto" data-id="${p.id}">
+                                상세 리포트
+                            </button>
+                        </div>
+                    </div>`;
+                }).join('');
+
+            return `
+                <div class="min-h-screen flex flex-col bg-slate-50 relative">
+                    <div class="blob bg-blue-100 w-full h-64 top-0 left-0"></div>
+                    ${getHeaderHTML()}
+                    <main class="flex-1 p-6 md:p-10 relative z-10">
+                        <div class="max-w-7xl mx-auto space-y-8">
+                            <div class="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 glass-card p-8 rounded-3xl shadow-sm border border-white">
+                                <div>
+                                    <h2 class="text-3xl font-black text-slate-900 mb-2">통합 데이터 관리 보드 <span class="text-red-500 text-sm font-bold align-top ml-2 border border-red-200 bg-red-50 px-2 py-0.5 rounded">Admin</span></h2>
+                                    <p class="text-slate-500 font-medium">참여자들의 진단 데이터를 실시간으로 수집하고 심층 리포트를 확인합니다.</p>
+                                </div>
+                                <div class="bridge-gradient-bg text-white px-6 py-3 rounded-2xl font-bold text-lg shadow-md">
+                                    총 누적: ${state.participantsList.length}건
+                                </div>
+                            </div>
+
+                            <div class="glass-card rounded-[2rem] overflow-hidden shadow-lg border border-white">
+                                <div class="hidden md:grid grid-cols-6 gap-4 p-5 border-b border-slate-200 text-sm font-bold text-slate-400 uppercase tracking-wider bg-slate-100/50">
+                                    <div>이름</div><div>전화번호</div><div>생년월일</div><div>진단 분류</div><div>완료 일시</div><div class="text-right">리포트 열람</div>
+                                </div>
+                                <div class="divide-y divide-slate-100 bg-white/50">
+                                    ${listHtml}
+                                </div>
+                            </div>
+                        </div>
+                    </main>
+                </div>
+            `;
+        }
+
+        function getResultHTML() {
+            if(state.role !== 'admin') return '<div class="p-10 text-center font-bold text-xl">접근 권한이 없습니다. 메인으로 돌아가주세요.</div>';
+            
+            const data = state.viewingResultData; 
+            if (!data) return `<div class="p-10 text-center">데이터 로드 실패</div>`;
+
+            let contentHtml = '';
+
+            if (data.testType === 'personality') {
+                const scores = data.scores || {};
+                let mainType = 1; let maxScore = -1;
+                Object.keys(scores).forEach(t => { if(scores[t] > maxScore) { maxScore = scores[t]; mainType = parseInt(t); } });
+                
+                const getHigh = (arr) => arr.reduce((a, b) => scores[a] > scores[b] ? a : b);
+                const gut = getHigh([8,9,1]); const heart = getHigh([2,3,4]); const head = getHigh([5,6,7]);
+                const tritypeNum = `${mainType}${gut !== mainType ? gut : ''}${heart !== mainType && heart !== gut ? heart : ''}${head !== mainType && head !== gut && head !== heart ? head : ''}`.slice(0,3);
+
+                const mainDesc = PERSONALITY_DATA[mainType];
+                const typeColor = mainDesc.color;
+
+                contentHtml = `
+                    <!-- 1. Hero Profile -->
+                    <div class="glass-card rounded-[3rem] p-8 md:p-12 shadow-xl overflow-hidden relative border border-white flex flex-col md:flex-row items-center gap-10">
+                        <div class="w-48 h-48 md:w-56 md:h-56 rounded-[2.5rem] flex items-center justify-center text-white text-[6rem] font-black shadow-2xl shrink-0 transform -rotate-3" style="background-color: ${typeColor}; box-shadow: 0 15px 35px -10px ${typeColor}80;">
+                            ${mainType}
+                        </div>
+                        <div class="flex-1 text-center md:text-left">
+                            <span class="inline-block px-4 py-1.5 rounded-full text-sm font-bold mb-4 tracking-wider text-white shadow-sm" style="background-color: ${typeColor}e6">주요 성향 (Primary Type)</span>
+                            <h2 class="text-4xl md:text-5xl font-black text-slate-800 mb-4">${mainDesc.name}</h2>
+                            <p class="text-2xl text-slate-600 font-bold mb-6">"${mainDesc.coreMsg}"</p>
+                            <p class="text-slate-600 text-lg leading-relaxed bg-white/70 p-5 rounded-2xl font-medium border border-white/50">${mainDesc.desc}</p>
+                        </div>
+                    </div>
+
+                    <!-- 2. Chart & Tritype -->
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                        <div class="glass-card p-8 md:p-10 rounded-[2.5rem] border border-white shadow-md">
+                            <h3 class="text-2xl font-black text-slate-800 mb-6">성향 프로파일 분포도</h3>
+                            <div class="chart-container h-[350px]"><canvas id="scoreChart"></canvas></div>
+                        </div>
+                        
+                        <div class="glass-card p-8 md:p-10 rounded-[2.5rem] border border-white shadow-md flex flex-col justify-center">
+                            <h3 class="text-2xl font-black text-slate-800 mb-4 text-center">다차원 트라이타입 (Tritype)</h3>
+                            <p class="text-center text-slate-500 font-medium mb-8">본능(장), 감정(가슴), 사고(머리) 3개 센터의 전략 조합입니다.</p>
+                            
+                            <div class="flex flex-col items-center gap-6">
+                                <div class="bg-gradient-to-br from-indigo-500 to-purple-600 text-white w-32 h-32 rounded-full flex items-center justify-center font-black text-4xl shadow-xl ring-4 ring-indigo-100">
+                                    ${tritypeNum}
+                                </div>
+                                <div class="flex gap-4 w-full justify-center">
+                                    <div class="bg-white/60 border border-white px-6 py-4 rounded-2xl text-center shadow-sm w-1/3">
+                                        <div class="text-xs font-bold text-slate-400 mb-1">본능 (장)</div>
+                                        <div class="text-3xl font-black text-slate-700">${gut}</div>
+                                    </div>
+                                    <div class="bg-white/60 border border-white px-6 py-4 rounded-2xl text-center shadow-sm w-1/3">
+                                        <div class="text-xs font-bold text-slate-400 mb-1">감정 (가슴)</div>
+                                        <div class="text-3xl font-black text-slate-700">${heart}</div>
+                                    </div>
+                                    <div class="bg-white/60 border border-white px-6 py-4 rounded-2xl text-center shadow-sm w-1/3">
+                                        <div class="text-xs font-bold text-slate-400 mb-1">사고 (머리)</div>
+                                        <div class="text-3xl font-black text-slate-700">${head}</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 3. Deep Dive Insights (Work, Comm, Stress, Growth) -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                        <div class="glass-card p-8 rounded-[2rem] border border-white shadow-md">
+                            <h4 class="text-xl font-black text-indigo-800 mb-4 flex items-center gap-2"><span class="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600">💼</span> 업무 및 리더십 스타일</h4>
+                            <p class="text-slate-600 leading-relaxed font-medium">${mainDesc.workStyle}</p>
+                        </div>
+                        <div class="glass-card p-8 rounded-[2rem] border border-white shadow-md">
+                            <h4 class="text-xl font-black text-teal-800 mb-4 flex items-center gap-2"><span class="w-8 h-8 rounded-full bg-teal-100 flex items-center justify-center text-teal-600">💬</span> 커뮤니케이션 방식</h4>
+                            <p class="text-slate-600 leading-relaxed font-medium">${mainDesc.commStyle}</p>
+                        </div>
+                        <div class="glass-card p-8 rounded-[2rem] border border-rose-100 bg-rose-50/50 shadow-md">
+                            <h4 class="text-xl font-black text-rose-800 mb-4 flex items-center gap-2"><span class="w-8 h-8 rounded-full bg-rose-200 flex items-center justify-center text-rose-700">⚠️</span> 스트레스 반응 (Disintegration)</h4>
+                            <p class="text-rose-900 leading-relaxed font-medium">${mainDesc.stressPoint}</p>
+                        </div>
+                        <div class="glass-card p-8 rounded-[2rem] border border-emerald-100 bg-emerald-50/50 shadow-md">
+                            <h4 class="text-xl font-black text-emerald-800 mb-4 flex items-center gap-2"><span class="w-8 h-8 rounded-full bg-emerald-200 flex items-center justify-center text-emerald-700">🌱</span> 성장 방향 (Integration)</h4>
+                            <p class="text-emerald-900 leading-relaxed font-medium">${mainDesc.growthPoint}</p>
+                        </div>
+                    </div>
+
+                    <!-- 4. Actionable Advice -->
+                    <div class="bg-slate-800 p-8 md:p-10 rounded-[2.5rem] shadow-xl text-white relative overflow-hidden">
+                        <div class="absolute top-0 right-0 w-64 h-64 bg-indigo-500 opacity-20 blur-[80px]"></div>
+                        <h3 class="text-2xl font-black text-white mb-6 relative z-10">성장을 위한 마인드 브릿지 가이드</h3>
+                        <ul class="space-y-4 relative z-10">
+                            ${mainDesc.advice.map(adv => `
+                                <li class="flex items-start gap-4 bg-white/10 p-5 rounded-2xl border border-white/10">
+                                    <div class="w-6 h-6 rounded-full bg-indigo-400 text-white flex items-center justify-center shrink-0 mt-0.5">${ICONS.check}</div>
+                                    <span class="text-lg font-medium text-slate-100 leading-relaxed">${adv}</span>
+                                </li>
+                            `).join('')}
+                        </ul>
+                    </div>
+                `;
+            } else if (data.testType === 'sixtypes') {
+                contentHtml = `
+                    <div class="glass-card rounded-[2rem] p-10 border border-white shadow-lg text-center">
+                        <h3 class="text-2xl font-black text-slate-800 mb-8">6도형 우선순위 결과</h3>
+                        <div class="flex flex-wrap justify-center gap-4">
+                            ${data.shapeRanks.map((s, i) => `<div class="bg-white px-6 py-4 rounded-2xl shadow-sm font-black text-xl border-2 border-indigo-100 text-indigo-700">${i+1}위: ${s}</div>`).join('')}
+                        </div>
+                    </div>
+                `;
+            } else if (data.testType === 'lifegraph') {
+                contentHtml = `
+                    <div class="glass-card rounded-[2rem] p-10 border border-white shadow-lg">
+                        <h3 class="text-2xl font-black text-slate-800 mb-8 text-center">인생그래프 데이터</h3>
+                        <div class="flex justify-center gap-6 flex-wrap">
+                            ${Object.entries(data.lifeGraphData).map(([age, val]) => `<div class="text-center bg-white p-6 rounded-2xl shadow-sm border border-emerald-100 min-w-[120px]"><div class="text-sm font-bold text-slate-400 mb-2 uppercase">${age}</div><div class="text-3xl font-black text-emerald-600">${val}</div></div>`).join('')}
+                        </div>
+                    </div>
+                `;
+            } else {
+                contentHtml = `<div class="glass-card p-10 text-center font-bold text-lg text-slate-500 rounded-[2rem]">해당 진단 응답 데이터 보관 완료</div>`;
+            }
+
+            return `<div class="min-h-screen flex flex-col relative bg-slate-50">
+                <div class="blob bg-indigo-100 w-full h-96 top-0 left-0"></div>
+                ${getHeaderHTML()}
+                <main class="flex-1 w-full max-w-6xl mx-auto p-4 md:p-10 relative z-10">
+                    <div class="space-y-8 pb-20">
+                        <div class="flex flex-col md:flex-row justify-between items-start md:items-end border-b-2 border-slate-200 pb-6 mb-4">
+                            <div>
+                                <h1 class="text-3xl md:text-4xl font-black text-slate-900 mb-2">${data.name}님의 심층 분석 리포트</h1>
+                                <p class="text-slate-500 font-bold">마인드 브릿지 매니저 전용 열람</p>
+                            </div>
+                            <div class="text-right mt-4 md:mt-0">
+                                <div class="text-slate-800 font-bold text-lg">생년월일: ${data.birthDate || '-'} / 연락처: ${data.phone}</div>
+                                <div class="text-slate-400 text-sm mt-1">진단일: ${new Date(data.createdAt.seconds * 1000).toLocaleString()}</div>
+                            </div>
+                        </div>
+                        ${contentHtml}
+                        <div class="flex justify-center gap-4 pt-10 border-t border-slate-200">
+                            <button onclick="window.print()" class="px-8 py-4 bg-white border-2 border-slate-200 text-slate-700 rounded-2xl font-bold hover:bg-slate-50 transition-colors shadow-sm flex items-center justify-center gap-2">PDF로 저장/출력</button>
+                            <button class="px-10 py-4 bg-slate-900 text-white rounded-2xl font-bold hover:bg-slate-800 transition-colors shadow-lg action-go-dashboard">목록으로 돌아가기</button>
+                        </div>
+                    </div>
+                </main>
+            </div>`;
+        }
+
+        // --- INTERACTIVITY ---
+        function attachEventListeners() {
+            document.querySelectorAll('.action-go-home').forEach(el => el.addEventListener('click', () => setView('home')));
+            document.querySelectorAll('.action-go-dashboard').forEach(el => el.addEventListener('click', () => setView('dashboard')));
+            document.querySelectorAll('.action-go-participant').forEach(el => el.addEventListener('click', () => setView('participant')));
+            document.querySelectorAll('.action-go-login').forEach(el => el.addEventListener('click', () => setView('login')));
+            
+            document.querySelectorAll('.action-admin-login').forEach(el => el.addEventListener('click', () => {
+                state.role = 'admin';
+                state.userInfo = { name: '관리자' };
+                setupDashboardListener();
+                setView('dashboard');
+            }));
+
+            const loginForm = document.getElementById('participant-login-form');
+            if(loginForm) {
+                loginForm.addEventListener('submit', (e) => {
+                    e.preventDefault();
+                    state.userInfo.name = document.getElementById('login-name').value;
+                    state.userInfo.birthDate = document.getElementById('login-birthdate').value;
+                    state.userInfo.phone = document.getElementById('login-phone').value;
+                    state.role = 'participant';
+                    setView('participant');
+                });
+            }
+
+            document.querySelectorAll('.action-start-test').forEach(el => {
+                el.addEventListener('click', (e) => {
+                    const testType = e.currentTarget.getAttribute('data-test');
+                    state.answers = {}; 
+                    setView('test', testType);
+                });
+            });
+
+            document.querySelectorAll('.action-view-result').forEach(el => {
+                el.addEventListener('click', (e) => {
+                    const id = e.currentTarget.getAttribute('data-id');
+                    const data = state.participantsList.find(p => p.id === id);
+                    if (data) {
+                        state.viewingResultData = data;
+                        setView('result');
+                    }
+                });
+            });
+
+            // Radio Logic
+            document.querySelectorAll('.radio-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const target = e.currentTarget;
+                    const qId = target.getAttribute('data-qid');
+                    const val = parseInt(target.getAttribute('data-val'));
+                    state.answers[qId] = val;
+                    
+                    const siblings = target.parentNode.querySelectorAll('.radio-btn');
+                    siblings.forEach(s => {
+                        s.classList.remove('selected');
+                        s.querySelector('.indicator').innerHTML = '';
+                    });
+                    target.classList.add('selected');
+                    target.querySelector('.indicator').innerHTML = '<div class="w-3.5 h-3.5 bg-[#845EF7] rounded-full"></div>';
+
+                    updateProgress(Object.keys(state.answers).length, state.activeTest === 'personality' ? personalityQuestions.length : ATTACHMENT_QUESTIONS.length);
+                });
+            });
+
+            // Shape Reordering (Six Types)
+            document.querySelectorAll('.shape-up').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const idx = parseInt(e.currentTarget.getAttribute('data-idx'));
+                    if (idx > 0) {
+                        const temp = state.shapeRanks[idx];
+                        state.shapeRanks[idx] = state.shapeRanks[idx-1];
+                        state.shapeRanks[idx-1] = temp;
+                        render();
+                    }
+                });
+            });
+            document.querySelectorAll('.shape-down').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const idx = parseInt(e.currentTarget.getAttribute('data-idx'));
+                    if (idx < state.shapeRanks.length - 1) {
+                        const temp = state.shapeRanks[idx];
+                        state.shapeRanks[idx] = state.shapeRanks[idx+1];
+                        state.shapeRanks[idx+1] = temp;
+                        render(); 
+                    }
+                });
+            });
+
+            // Life Graph Sliders
+            document.querySelectorAll('.life-slider').forEach(slider => {
+                slider.addEventListener('input', (e) => {
+                    const ageKey = e.target.getAttribute('data-age');
+                    const val = parseInt(e.target.value);
+                    state.lifeGraphData[ageKey] = val;
+                    document.getElementById(`val-${ageKey}`).innerText = val;
+                    updateLifeChart();
+                });
+            });
+
+            // Submit Test -> Save to Firebase
+            const submitBtn = document.getElementById('btn-submit-test');
+            if(submitBtn) {
+                submitBtn.addEventListener('click', async () => {
+                    if (['personality', 'attachment', 'coreemotion'].includes(state.activeTest)) {
+                        const qs = state.activeTest === 'personality' ? personalityQuestions : ATTACHMENT_QUESTIONS;
+                        if (Object.keys(state.answers).length < qs.length) {
+                            if(!confirm("응답하지 않은 문항이 있습니다. 그래도 제출하시겠습니까?")) return;
+                        }
+                    }
+
+                    const payload = {
+                        uid: state.user ? state.user.uid : 'anonymous',
+                        name: state.userInfo.name,
+                        birthDate: state.userInfo.birthDate,
+                        phone: state.userInfo.phone,
+                        testType: state.activeTest,
+                        createdAt: serverTimestamp()
+                    };
+
+                    if (state.activeTest === 'personality') {
+                        const scores = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0, 8: 0, 9: 0 };
+                        Object.keys(state.answers).forEach(qId => {
+                            const q = personalityQuestions.find(q => q.id == qId);
+                            if (q) scores[q.type] += state.answers[qId];
+                        });
+                        payload.answers = state.answers;
+                        payload.scores = scores;
+                    } else if (state.activeTest === 'sixtypes') {
+                        payload.shapeRanks = state.shapeRanks;
+                    } else if (state.activeTest === 'lifegraph') {
+                        payload.lifeGraphData = state.lifeGraphData;
+                    } else {
+                        payload.answers = state.answers; 
+                    }
+
+                    try {
+                        if(db && appId) {
+                            const participantsRef = collection(db, 'artifacts', appId, 'public', 'data', 'mindbridge_results');
+                            await addDoc(participantsRef, payload);
+                        }
+                    } catch (error) { console.error("Error saving doc", error); }
+
+                    if(state.role === 'participant') {
+                        setView('submitSuccess');
+                    } else {
+                        alert('데이터가 저장되었습니다. (테스트용)');
+                        setView('home');
+                    }
+                });
+            }
+        }
+
+        function updateProgress(answered, total) {
+            const pct = (answered / total) * 100;
+            document.getElementById('progress-count').innerText = answered;
+            
+            const progressBar = document.getElementById('progress-bar');
+            if (progressBar) progressBar.style.width = `${pct}%`;
+            
+            const submitBtn = document.getElementById('btn-submit-test');
+            if(submitBtn) {
+                if (answered >= total) submitBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+                else submitBtn.classList.add('opacity-50', 'cursor-not-allowed');
+            }
+        }
+
+        // --- CHART JS ---
+        function initChart() {
+            const ctx = document.getElementById('scoreChart');
+            if(!ctx || !state.viewingResultData || !state.viewingResultData.scores) return;
+            if(chartInstance) chartInstance.destroy();
+
+            const scores = state.viewingResultData.scores;
+            const labels = []; const data = []; const bgColors = [];
+            
+            for(let i=1; i<=9; i++) {
+                labels.push(`${i}번 ${PERSONALITY_DATA[i].short.split('/')[0]}`);
+                data.push(scores[i] || 0);
+                bgColors.push(PERSONALITY_DATA[i].color + 'CC');
+            }
+            Chart.defaults.font.family = "'Pretendard', sans-serif";
+
+            chartInstance = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: '유형별 점수', data: data, backgroundColor: bgColors,
+                        hoverBackgroundColor: bgColors.map(c => c.replace('CC', 'FF')),
+                        borderRadius: 8
+                    }]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: { 
+                        legend: { display: false },
+                        tooltip: {
+                            backgroundColor: 'rgba(255, 255, 255, 0.95)', titleColor: '#1e293b', bodyColor: '#475569',
+                            borderColor: '#e2e8f0', borderWidth: 1, padding: 12,
+                            titleFont: { size: 14, weight: 'bold' }, bodyFont: { size: 14, weight: 'bold' }
+                        }
+                    },
+                    scales: {
+                        y: { 
+                            beginAtZero: true, max: 45, 
+                            grid: { color: 'rgba(0,0,0,0.04)', drawBorder: false },
+                            ticks: { font: { weight: 'bold' }, stepSize: 9 }
+                        },
+                        x: { 
+                            grid: { display: false, drawBorder: false }, 
+                            ticks: { font: { weight: 'bold', size: 12 }, color: '#64748b' } 
+                        }
+                    }
+                }
+            });
+        }
+
+        function initLifeChart() {
+            const ctx = document.getElementById('lifeChart');
+            if(!ctx) return;
+            if(lifeChartInstance) lifeChartInstance.destroy();
+            Chart.defaults.font.family = "'Pretendard', sans-serif";
+
+            lifeChartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: ['유년기', '청소년기', '20대', '30대', '40대 이상'],
+                    datasets: [{
+                        label: '만족도',
+                        data: [state.lifeGraphData.age10, state.lifeGraphData.age20, state.lifeGraphData.age30, state.lifeGraphData.age40, state.lifeGraphData.age50],
+                        borderColor: '#845EF7', backgroundColor: 'rgba(132, 94, 247, 0.1)', borderWidth: 4,
+                        pointBackgroundColor: '#fff', pointBorderColor: '#845EF7', pointBorderWidth: 3, pointRadius: 6,
+                        fill: true, tension: 0.4
+                    }]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: { y: { min: -100, max: 100, ticks: { stepSize: 50 } } }
+                }
+            });
+        }
+
+        function updateLifeChart() {
+            if(lifeChartInstance) {
+                lifeChartInstance.data.datasets[0].data = [
+                    state.lifeGraphData.age10, state.lifeGraphData.age20, 
+                    state.lifeGraphData.age30, state.lifeGraphData.age40, state.lifeGraphData.age50
+                ];
+                lifeChartInstance.update();
+            }
+        }
+
+        // 아이폰 사파리 등 환경에서 DOMContentLoaded 이벤트 렌더링 누락 방지 및 즉시 실행 보장
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', () => { render(); });
+        } else {
+            render();
+        }
+    </script>
+</body>
+</html>

@@ -340,14 +340,32 @@
 
         // --- FIREBASE LISTENERS ---
         function setupDashboardListener() {
-            if (!state.user || !db || !appId || state.role !== 'admin') return;
+            //if (!state.user || !db || !appId || state.role !== 'admin') return;
+            if (!state.user || state.role !== 'admin') return;
             if (unsubscribeDb) unsubscribeDb();
-            const participantsRef = collection(db, 'artifacts', appId, 'public', 'data', 'mindbridge_results');
+            //const participantsRef = collection(db, 'artifacts', appId, 'public', 'data', 'mindbridge_results');
+            //unsubscribeDb = onSnapshot(participantsRef, (snapshot) => {
+            //    const fetched = [];
+            //    snapshot.forEach(doc => fetched.push({ id: doc.id, ...doc.data() }));
+            //    fetched.sort((a, b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0));
+            //    state.participantsList = fetched;
+            //    if (state.currentView === 'dashboard') render();
+            //}, (error) => console.error("Firestore listen error", error));
+
+            const participantsRef = collection(db, 'users');
             unsubscribeDb = onSnapshot(participantsRef, (snapshot) => {
+                console.log("snapshot size:", snapshot.size);
+
                 const fetched = [];
-                snapshot.forEach(doc => fetched.push({ id: doc.id, ...doc.data() }));
-                fetched.sort((a, b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0));
+                snapshot.forEach(doc => {
+                    fetched.push({ id: doc.id, ...doc.data() });
+                });
+
+                console.log("가져온 데이터", fetched);
+                console.log("snapshot size:", snapshot.size);
+
                 state.participantsList = fetched;
+
                 if (state.currentView === 'dashboard') render();
             }, (error) => console.error("Firestore listen error", error));
         }
@@ -845,21 +863,44 @@
             const listHtml = state.participantsList.length === 0 
                 ? `<div class="p-16 text-center text-slate-500 font-medium">아직 수집된 누적 데이터가 없습니다.</div>`
                 : state.participantsList.map(p => {
-                    const dateStr = p.createdAt && p.createdAt.toMillis ? new Date(p.createdAt.toMillis()).toLocaleString() : '방금 전';
                     const testNames = { 'personality': '다차원 성향', 'sixtypes': '6도형', 'lifegraph': '인생그래프', 'attachment': '애착유형', 'coreemotion': '핵심감정' };
-                    return `
-                    <div class="grid grid-cols-1 md:grid-cols-6 gap-4 p-5 border-b border-slate-100 items-center hover:bg-white/80 transition font-medium text-sm">
+                    const testTypes = Object.keys(p.tests || {});
+                    //const dateStr = p.tests?.[testType]?.createdAt && p.tests?.[testType]?.createdAt.toMillis ? new Date(p.tests?.[testType]?.createdAt.toMillis()).toLocaleString() : '방금 전';
+                    
+                    return testTypes.map(type => {
+                        const createdAt = p.tests?.[type]?.createdAt;
+                        const dateStr = createdAt?.toDate?.()?.toLocaleString?.() || '방금 전';
+
+                        return `
+                            <div class="grid grid-cols-1 md:grid-cols-6 gap-4 p-5 border-b border-slate-100 items-center hover:bg-white/80 transition font-medium text-sm">
+                            <div class="font-bold text-slate-800 text-base">${p.name}</div>
+                            <div class="text-slate-600">${p.phone || '-'}</div>
+                            <div class="text-slate-600">${p.birthDate || '-'}</div>
+                            <div><span class="px-3 py-1.5 bg-indigo-50 border border-indigo-100 text-indigo-700 rounded-lg font-bold">${testNames[type] || type || '-'}</span></div>
+                            <div class="text-slate-500 text-xs">${dateStr}</div>
+                            <div class="flex md:justify-end">
+                                <button class="action-view-result px-4 py-2 bg-white border border-slate-300 rounded-lg text-sm font-bold text-slate-700 hover:bg-slate-50 hover:border-indigo-400 transition shadow-sm w-full md:w-auto" data-id="${p.id}">
+                                    상세 리포트
+                                </button>
+                            </div>  
+                        </div>`;
+                    }).join('')
+
+                    /*return `
+                        <div class="grid grid-cols-1 md:grid-cols-6 gap-4 p-5 border-b border-slate-100 items-center hover:bg-white/80 transition font-medium text-sm">
                         <div class="font-bold text-slate-800 text-base">${p.name}</div>
                         <div class="text-slate-600">${p.phone || '-'}</div>
                         <div class="text-slate-600">${p.birthDate || '-'}</div>
-                        <div><span class="px-3 py-1.5 bg-indigo-50 border border-indigo-100 text-indigo-700 rounded-lg font-bold">${testNames[p.testType] || p.testType}</span></div>
+                        <div><span class="px-3 py-1.5 bg-indigo-50 border border-indigo-100 text-indigo-700 rounded-lg font-bold">${testNames[testType] || testType || '-'}</span></div>
                         <div class="text-slate-500 text-xs">${dateStr}</div>
                         <div class="flex md:justify-end">
                             <button class="action-view-result px-4 py-2 bg-white border border-slate-300 rounded-lg text-sm font-bold text-slate-700 hover:bg-slate-50 hover:border-indigo-400 transition shadow-sm w-full md:w-auto" data-id="${p.id}">
                                 상세 리포트
                             </button>
                         </div>
-                    </div>`;
+                    </div>`;*/
+
+                    console.log(p);
                 }).join('');
 
             return `
@@ -1072,20 +1113,28 @@
                     const snapshot = await getDocs(q);
 
                     if (!snapshot.empty) {
+                        const docSnap = snapshot.docs[0];
+                        const existingData = docSnap.data();
+                        const uid = existingData.uid;
                         alert("이미 등록된 사용자입니다!");
                         return;
                     }
+                    else {
+                        //const uid = crypto.randomUUID();
 
-                    //저장
-                    await addDoc(collection(db, "users"), {
-                        uid: user.uid,
-                        name,
-                        birthDate,
-                        phone,
-                        createdAt: new Date()
-                    });
+                        //저장
+                        //await addDoc(collection(db, "users"), {
+                        //    uid,
+                        //    name,
+                        //    birthDate,
+                        //    phone,
+                        //    createdAt: new Date()
+                        //});
+                        alert("저장 완료!");
+                        return;
+                    }
 
-                //alert("저장 완료!");
+                
                 } catch (error) {
                     console.error("에러:", error);
                 }
@@ -1093,13 +1142,13 @@
            
         }
 
-        function saveSixtypes() {
-            saveTest("sixtypes", state.shapeRanks);
-        }
+        //function saveSixtypes() {
+        //    saveTest("sixtypes", state.shapeRanks);
+        //}
 
-        function saveLifeGraph() {
-            saveTest("lifegraph", state.lifeGraphData);
-        }   
+        //function saveLifeGraph() {
+        //    saveTest("lifegraph", state.lifeGraphData);
+        //}   
 
 
         function attachEventListeners() {
@@ -1250,7 +1299,9 @@
                         payload.answers = state.answers; 
                     }
 
-                    const userRef = doc(db, "users", uid);
+
+                    const userId = `${state.userInfo.name}_${state.userInfo.birthDate}`;
+                    const userRef = doc(db, "users", userId);
 
                     await setDoc(userRef, payload, { merge: true });
 

@@ -880,7 +880,6 @@
                 : state.participantsList.map(p => {
                     const testNames = { 'personality': '다차원 성향', 'sixtypes': '6도형', 'lifegraph': '인생그래프', 'attachment': '애착유형', 'coreemotion': '핵심감정' };
                     const testTypes = Object.keys(p.tests || {});
-                    //const testCount = Object.keys(p.tests).length; 
                     //const dateStr = p.tests?.[testType]?.createdAt && p.tests?.[testType]?.createdAt.toMillis ? new Date(p.tests?.[testType]?.createdAt.toMillis()).toLocaleString() : '방금 전';
                     
                     return testTypes.map(type => {
@@ -953,11 +952,13 @@
             if(state.role !== 'admin') return '<div class="p-10 text-center font-bold text-xl">접근 권한이 없습니다. 메인으로 돌아가주세요.</div>';
             
             const data = state.viewingResultData; 
+            console.log("Viewing result data:", data);
+            const createdAt = data.tests?.[state.activeTest]?.createdAt;
             if (!data) return `<div class="p-10 text-center">데이터 로드 실패</div>`;
 
             let contentHtml = '';
 
-            if (data.testType === 'personality') {
+            if (data.tests[state.activeTest] === 'personality') {
                 const scores = data.scores || {};
                 let mainType = 1; let maxScore = -1;
                 Object.keys(scores).forEach(t => { if(scores[t] > maxScore) { maxScore = scores[t]; mainType = parseInt(t); } });
@@ -968,6 +969,8 @@
 
                 const mainDesc = PERSONALITY_DATA[mainType];
                 const typeColor = mainDesc.color;
+
+                
 
                 contentHtml = `
                     <!-- 1. Hero Profile -->
@@ -1050,7 +1053,7 @@
                         </ul>
                     </div>
                 `;
-            } else if (data.testType === 'sixtypes') {
+            } else if (data.tests[state.activeTest] === 'sixtypes') {
                 contentHtml = `
                     <div class="glass-card rounded-[2rem] p-10 border border-white shadow-lg text-center">
                         <h3 class="text-2xl font-black text-slate-800 mb-8">6도형 우선순위 결과</h3>
@@ -1059,7 +1062,8 @@
                         </div>
                     </div>
                 `;
-            } else if (data.testType === 'lifegraph') {
+            } else if (data.tests.activeTest === 'lifegraph') {
+                console.log("Life Graph Data:", data.lifeGraphData);
                 contentHtml = `
                     <div class="glass-card rounded-[2rem] p-10 border border-white shadow-lg">
                         <h3 class="text-2xl font-black text-slate-800 mb-8 text-center">인생그래프 데이터</h3>
@@ -1084,7 +1088,9 @@
                             </div>
                             <div class="text-right mt-4 md:mt-0">
                                 <div class="text-slate-800 font-bold text-lg">생년월일: ${data.birthDate || '-'} / 연락처: ${data.phone}</div>
-                                <div class="text-slate-400 text-sm mt-1">진단일: ${new Date(data.createdAt.seconds * 1000).toLocaleString()}</div>
+                                <div class="text-slate-400 text-sm mt-1">진단일: ${
+                                    data.tests?.[state.activeTest]?.createdAt ? data.tests[state.activeTest].createdAt.toDate().toLocaleString() : '날짜 없음'
+                                }</div>
                             </div>
                         </div>
                         ${contentHtml}

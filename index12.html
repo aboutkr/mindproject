@@ -857,7 +857,22 @@
             `;
         }
 
+        
+
         function getDashboardHTML() {
+            state.participantsList.forEach(p => {
+                console.log("tests:", p.tests);
+            });
+            const totalTestCount = state.participantsList.reduce((acc, p) => {
+                const tests = p.tests;
+
+                if (!tests || typeof tests !== 'object') return acc;
+
+                const count = Object.values(tests).filter(v => v != null).length;
+
+                return acc + count;
+            }, 0);
+
             if(state.role !== 'admin') return '<div class="p-10 text-center font-bold text-xl">접근 권한이 없습니다. 메인으로 돌아가주세요.</div>';
 
             const listHtml = state.participantsList.length === 0 
@@ -865,6 +880,7 @@
                 : state.participantsList.map(p => {
                     const testNames = { 'personality': '다차원 성향', 'sixtypes': '6도형', 'lifegraph': '인생그래프', 'attachment': '애착유형', 'coreemotion': '핵심감정' };
                     const testTypes = Object.keys(p.tests || {});
+                    //const testCount = Object.keys(p.tests).length; 
                     //const dateStr = p.tests?.[testType]?.createdAt && p.tests?.[testType]?.createdAt.toMillis ? new Date(p.tests?.[testType]?.createdAt.toMillis()).toLocaleString() : '방금 전';
                     
                     return testTypes.map(type => {
@@ -915,7 +931,7 @@
                                     <p class="text-slate-500 font-medium">참여자들의 진단 데이터를 실시간으로 수집하고 심층 리포트를 확인합니다.</p>
                                 </div>
                                 <div class="bridge-gradient-bg text-white px-6 py-3 rounded-2xl font-bold text-lg shadow-md">
-                                    총 누적: ${state.participantsList.length}건
+                                    총 누적: ${totalTestCount}건
                                 </div>
                             </div>
 
@@ -1142,14 +1158,6 @@
            
         }
 
-        //function saveSixtypes() {
-        //    saveTest("sixtypes", state.shapeRanks);
-        //}
-
-        //function saveLifeGraph() {
-        //    saveTest("lifegraph", state.lifeGraphData);
-        //}   
-
 
         function attachEventListeners() {
             document.querySelectorAll('.action-go-home').forEach(el => el.addEventListener('click', () => setView('home')));
@@ -1306,12 +1314,42 @@
                     await setDoc(userRef, payload, { merge: true });
 
                     try {
-                        if(db && appId) {
-                            const participantsRef = collection(db, 'artifacts', appId, 'public', 'data', 'mindbridge_results');
-                            await addDoc(participantsRef, payload);
+                        if (db && appId) {
+
+                            const userId = `${state.userInfo.name}_${state.userInfo.birthDate}`;
+
+                            const participantsRef = doc(
+                                db,
+                                'artifacts',
+                                appId,
+                                'public',
+                                'data',
+                                'mindbridge_results',
+                                userId
+                            );
+
+                            await setDoc(participantsRef, {
+                                name: state.userInfo.name,
+                                birthDate: state.userInfo.birthDate,
+                                phone: state.userInfo.phone,
+                                [`tests.${state.activeTest}`]: {
+                                    result: state.result || null,
+                                    createdAt: serverTimestamp()
+                                }
+                            }, { merge: true });
 
                         }
-                    } catch (error) { console.error("Error saving doc", error); }
+                    } catch (error) {
+                        console.error("Error saving doc", error);
+                    }
+
+                    //try {
+                        //if(db && appId) {
+                            //const participantsRef = collection(db, 'artifacts', appId, 'public', 'data', 'mindbridge_results');
+                            //await addDoc(participantsRef, payload);
+
+                        //}
+                    //} catch (error) { console.error("Error saving doc", error); }
 
                     if(state.role === 'participant') {
                         setView('submitSuccess');

@@ -117,7 +117,8 @@
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, collection, addDoc, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-        
+        import { query, where, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
         // --- FIREBASE INITIALIZATION ---
         let app, auth, db, appId;
         try {
@@ -1038,16 +1039,41 @@
 
                 const user = auth.currentUser;
 
-                await addDoc(collection(db, "users"), {
-                    uid: user?.uid,
-                    name,
-                    birthDate,
-                    phone,
-                    createdAt: new Date()
-                });
+                if (!user) {
+                    alert("로그인이 필요합니다!");
+                    return;
+                }
 
-                alert("저장 완료!");
+                try {
+                    //중복 체크
+                    const q = query(
+                        collection(db, "users"),
+                        where("name", "==", name),
+                        where("birthDate", "==", birthDate)
+                    );
+
+                    const snapshot = await getDocs(q);
+
+                    if (!snapshot.empty) {
+                        alert("이미 등록된 사용자입니다!");
+                        return;
+                    }
+
+                    //저장
+                    await addDoc(collection(db, "users"), {
+                        uid: user.uid,
+                        name,
+                        birthDate,
+                        phone,
+                        createdAt: new Date()
+                    });
+
+                //alert("저장 완료!");
+                } catch (error) {
+                    console.error("에러:", error);
+                }
             });
+           
         }
 
 

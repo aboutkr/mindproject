@@ -118,6 +118,7 @@
         import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, collection, addDoc, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         import { query, where, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { doc, updateDoc, setDoc, getDoc, arrayUnion } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // --- FIREBASE INITIALIZATION ---
         let app, auth, db, appId;
@@ -155,6 +156,22 @@
                 } catch (e) {
                     console.error("에러:", e);
                 }
+            }
+            
+            async function saveTest(testType, results) {
+                const user = auth.currentUser;
+
+                if (!user) {
+                    alert("로그인 필요");
+                    return;
+                }
+
+                await addDoc(collection(db, "tests"), {
+                    uid: user.uid,
+                    testType: testType,  
+                    results: results,     
+                    createdAt: new Date()
+                });
             }
 
             const initAuth = async () => {
@@ -1076,6 +1093,14 @@
            
         }
 
+        function saveSixtypes() {
+            saveTest("sixtypes", state.shapeRanks);
+        }
+
+        function saveLifeGraph() {
+            saveTest("lifegraph", state.lifeGraphData);
+        }   
+
 
         function attachEventListeners() {
             document.querySelectorAll('.action-go-home').forEach(el => el.addEventListener('click', () => setView('home')));
@@ -1177,6 +1202,7 @@
             });
 
             // Submit Test -> Save to Firebase
+            const uid = state.user ? state.user.uid : 'anonymous';
             const submitBtn = document.getElementById('btn-submit-test');
             if(submitBtn) {
                 submitBtn.addEventListener('click', async () => {
@@ -1188,14 +1214,26 @@
                     }
 
                     const payload = {
-                        uid: state.user ? state.user.uid : 'anonymous',
+                        //uid: state.user ? state.user.uid : 'anonymous',
+                        //name: state.userInfo.name,
+                        //birthDate: state.userInfo.birthDate,
+                        //phone: state.userInfo.phone,
+                        //testType: state.activeTest,
+                        //createdAt: serverTimestamp()
+
                         name: state.userInfo.name,
                         birthDate: state.userInfo.birthDate,
                         phone: state.userInfo.phone,
-                        testType: state.activeTest,
-                        createdAt: serverTimestamp()
+
+                        tests: {
+                            [state.activeTest]: {
+                                result: state.result || null,
+                                createdAt: serverTimestamp()
+                            }
+                        }
                     };
 
+                    
                     if (state.activeTest === 'personality') {
                         const scores = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0, 8: 0, 9: 0 };
                         Object.keys(state.answers).forEach(qId => {
@@ -1212,10 +1250,15 @@
                         payload.answers = state.answers; 
                     }
 
+                    const userRef = doc(db, "users", uid);
+
+                    await setDoc(userRef, payload, { merge: true });
+
                     try {
                         if(db && appId) {
                             const participantsRef = collection(db, 'artifacts', appId, 'public', 'data', 'mindbridge_results');
                             await addDoc(participantsRef, payload);
+
                         }
                     } catch (error) { console.error("Error saving doc", error); }
 

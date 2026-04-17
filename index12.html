@@ -113,20 +113,70 @@
     <div class="mesh-bg"></div>
     <div id="app" class="relative z-10 min-h-screen flex flex-col"></div>
 
+    //dh
+    //firebase 연동
+    // Import the functions you need from the SDKs you need
+    import { initializeApp } from "firebase/app";
+    // TODO: Add SDKs for Firebase products that you want to use
+    // https://firebase.google.com/docs/web/setup#available-libraries
+
+    // Your web app's Firebase configuration
+    const firebaseConfig = {
+        apiKey: "AIzaSyAaCTMhgvv4SBVsB8tn8QnW5qoW9xm6JCc",
+        authDomain: "mindproject-35c00.firebaseapp.com",
+        projectId: "mindproject-35c00",
+        storageBucket: "mindproject-35c00.firebasestorage.app",
+        messagingSenderId: "236323050393",
+        appId: "1:236323050393:web:17cfcdad5128939118b908"
+    };
+
+    // Initialize Firebase
+    const app = initializeApp(firebaseConfig);
+
+
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, collection, addDoc, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-
+        
         // --- FIREBASE INITIALIZATION ---
         let app, auth, db, appId;
         try {
-            const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : { projectId: "demo-project" };
+            //const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : { projectId: "demo-project" };
+            const firebaseConfig = {
+                apiKey: "AIzaSyAaCTMhgvv4SBVsB8tn8QnW5qoW9xm6JCc",
+                authDomain: "mindproject-35c00.firebaseapp.com",
+                projectId: "mindproject-35c00",
+                storageBucket: "mindproject-35c00.firebasestorage.app",
+                messagingSenderId: "236323050393",
+                appId: "1:236323050393:web:17cfcdad5128939118b908"
+            };
+
             app = initializeApp(firebaseConfig);
             auth = getAuth(app);
             db = getFirestore(app);
-            appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+            //appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
             
+            async function saveUser() {
+                const name = document.getElementById("login-name").value;
+                const birthDate = document.getElementById("login-birthdate").value;
+                const phone = document.getElementById("login-phone").value;
+
+                try {
+                    await addDoc(collection(db, "users"), {
+                        uid: user.uid,
+                        name: name,
+                        birthDate: birthDate,
+                        phone: phone,
+                        createdAt: new Date()
+                    });
+
+                    alert("저장 완료!");
+                } catch (e) {
+                    console.error("에러:", e);
+                }
+            }
+
             const initAuth = async () => {
                 try {
                     if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
@@ -137,6 +187,7 @@
                 } catch (e) { console.error("Auth init failed", e); }
             };
             initAuth();
+
             onAuthStateChanged(auth, (user) => {
                 state.user = user;
                 if (user && state.role === 'admin') setupDashboardListener();
@@ -310,7 +361,10 @@
             app.innerHTML = '';
             
             if (state.currentView === 'home') app.innerHTML = getHomeHTML();
-            else if (state.currentView === 'login') app.innerHTML = getLoginHTML();
+            else if (state.currentView === 'login') {
+                app.innerHTML = getLoginHTML();
+                bindLoginEvents(); // 로그인 정보 추가
+            } 
             else if (state.currentView === 'dashboard') app.innerHTML = getDashboardHTML();
             else if (state.currentView === 'participant') app.innerHTML = getParticipantHTML();
             else if (state.currentView === 'test') {
@@ -990,6 +1044,34 @@
         }
 
         // --- INTERACTIVITY ---
+
+        function bindLoginEvents() {
+            const form = document.getElementById("participant-login-form");
+
+            if (!form) return;
+
+            form.addEventListener("submit", async (e) => {
+                e.preventDefault();
+
+                const name = document.getElementById("login-name").value;
+                const birthDate = document.getElementById("login-birthdate").value;
+                const phone = document.getElementById("login-phone").value;
+
+                const user = auth.currentUser;
+
+                await addDoc(collection(db, "users"), {
+                    uid: user?.uid,
+                    name,
+                    birthDate,
+                    phone,
+                    createdAt: new Date()
+                });
+
+                alert("저장 완료!");
+            });
+        }
+
+
         function attachEventListeners() {
             document.querySelectorAll('.action-go-home').forEach(el => el.addEventListener('click', () => setView('home')));
             document.querySelectorAll('.action-go-dashboard').forEach(el => el.addEventListener('click', () => setView('dashboard')));

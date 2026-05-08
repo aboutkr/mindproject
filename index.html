@@ -991,6 +991,15 @@ async function generateAI(mainType,gut,heart,head,scores){
   }catch(e){document.getElementById('rp-ai').textContent=`${state.name}님은 ${t.name} 유형으로, ${t.core.replace(/"/g,'')} 핵심 동기를 가지고 있습니다.\n\n${t.growth}\n\n${t.advice[0]}`;}
 }
 
+function renderPersonalityFromData(data){
+  const mainType = data.mainType;
+  const scores = data.scores;
+
+  const [gut, heart, head] = data.tritype.split('-').map(Number);
+
+  showPersonalityResult(mainType, scores, gut, heart, head);
+}
+
 /* ═══════════════════════════════════
    6 SHAPES
 ═══════════════════════════════════ */
@@ -1629,7 +1638,7 @@ function showDetail(uid){
   </div>`;
 
   if(s.tests.personality){
-    const p=s.tests.personality;
+    /*const p=s.tests.personality;
     const t=TYPES[p.mainType];
     html+=`<div class="detail-section">
       <div class="detail-sec-h">성격유형 검사</div>
@@ -1637,7 +1646,10 @@ function showDetail(uid){
       <div class="detail-row"><span class="detail-key">트라이타입</span><span class="detail-val">${p.tritype||'-'}</span></div>
       <div class="detail-row"><span class="detail-key">유형별 점수</span><span class="detail-val">${p.scores?Object.entries(p.scores).map(([k,v])=>`${k}번:${v}`).join(', '):'-'}</span></div>
       <div class="detail-row"><span class="detail-key">완료일시</span><span class="detail-val">${new Date(p.completedAt).toLocaleString('ko-KR')}</span></div>
-    </div>`;
+    </div>`;*/
+
+    const saved = s.tests.personality;
+    renderPersonalityFromData(saved);
   }
 
   if(s.tests.shapes){

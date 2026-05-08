@@ -628,11 +628,21 @@ footer{padding:32px 5%;border-top:1px solid var(--border);display:flex;align-ite
       <div class="res-card full"><div class="res-icon" style="background:rgba(255,193,7,.1)">✨</div><div class="res-ct">Mind Bridge 성장 가이드</div><div class="adv-list" id="rp-adv"></div></div>
     </div>
     <div class="res-cta">
-      <button class="btn-res-s" onclick="goTo('s-select')">다른 검사 하기</button>
-      <button class="btn-res-p" onclick="goTo('s-home')">홈으로</button>
+      <!-- 사용자용 -->
+      <div id="cta-user">
+        <button class="btn-res-s" onclick="goTo('s-select')">다른 검사 하기</button>
+        <button class="btn-res-p" onclick="goTo('s-home')">홈으로</button>
+      </div>
+
+      <!-- 관리자용 -->
+      <div id="cta-admin" style="display:none;">
+        <button class="btn-res-p" onclick="exportPersonalityPDF()">PDF로 저장</button>
+      </div>
     </div>
   </div>
 </div>
+
+
 
 <!-- ════════ SCREEN: RESILIENCE RESULT ════════ -->
 <div id="s-result-r" class="sc-scroll">
@@ -733,6 +743,8 @@ footer{padding:32px 5%;border-top:1px solid var(--border);display:flex;align-ite
 <div class="detail-modal hidden" id="detail-modal" onclick="if(event.target===this)closeDetail()">
   <div class="detail-box" id="detail-box"></div>
 </div>
+
+<script src="html2canvas"></script>
 
 <script>
 /* ═══════════════════════════════════
@@ -909,6 +921,110 @@ function submitInfo(){
   goTo('s-select');
 }
 
+window.exportUserData = async function(uid){
+
+  const subs = JSON.parse(localStorage.getItem('mb_subs') || '[]');
+  const s = subs.find(x => x.id === uid);
+  if(!s) return;
+
+  // 1️⃣ 화면 이동 (이미 render된 상태 유지)
+  goTo('s-result-p');
+
+  // 2️⃣ 렌더 안정화 (핵심)
+  await new Promise(r => setTimeout(r, 500));
+
+  const target = document.getElementById('detail-box');
+  if(!target){
+    console.error('detail-box 없음');
+    return;
+  }
+
+  // 3️⃣ 캡처 (아까 잘 되던 방식 유지 + 옵션만 보정)
+  const canvas = await html2canvas(target, {
+  scale: 2,
+  useCORS: true,
+  backgroundColor: '#0d0d12',
+
+  // 🔥 핵심 수정 1 (위쪽 잘림 방지)
+  scrollX: 0,
+  scrollY: 0,
+
+  // 🔥 핵심 수정 2 (렌더 영역 정확히 고정)
+  windowWidth: document.documentElement.scrollWidth,
+  windowHeight: document.documentElement.scrollHeight
+});
+
+  const imgData = canvas.toDataURL('image/png');
+
+  // 4️⃣ PDF 생성
+  const { jsPDF } = window.jspdf;
+  const pdf = new jsPDF('p', 'mm', 'a4');
+
+  const pageWidth = 210;
+  const pageHeight = 297;
+
+  // 🔥 1페이지 맞추기 (안 잘리게 핵심 수정)
+  const ratio = Math.min(
+    pageWidth / canvas.width,
+    pageHeight / canvas.height
+  );
+
+  const imgWidth = canvas.width * ratio;
+  const imgHeight = canvas.height * ratio;
+
+  const x = (pageWidth - imgWidth) / 2;
+  const y = (pageHeight - imgHeight) / 2;
+
+  pdf.addImage(imgData, 'PNG', x, y, imgWidth, imgHeight);
+
+  pdf.save(`MindBridge_${s.name}.pdf`);
+};
+
+window.exportPersonalityPDF = async function () {
+
+  console.log('html2canvas:', typeof html2canvas);
+
+  const target = document.getElementById('s-result-p');
+  if (!target) return;
+
+  //document.getElementById('rp-ai').textContent = data;
+
+  await new Promise(r => setTimeout(r, 150));
+
+  const canvas = await html2canvas(document.body, {
+    useCORS: true,
+    scale: 2,
+    scrollY: 0,
+    windowWidth: document.body.scrollWidth,
+    windowHeight: document.body.scrollHeight
+  });
+
+  const imgData = canvas.toDataURL('image/png');
+
+  const { jsPDF } = window.jspdf;
+  const pdf = new jsPDF('p', 'mm', 'a4');
+
+  const width = 190;
+  const height = (canvas.height * width) / canvas.width;
+
+  pdf.addImage(imgData, 'PNG', 10, 10, width, height);
+  pdf.save('personality_result.pdf');
+};
+
+function renderButtons(){
+
+  const user = document.getElementById('cta-user');
+  const admin = document.getElementById('cta-admin');
+
+  if (state.adminLoggedIn) {
+    user.style.display = 'none';
+    admin.style.display = 'block';
+  } else {
+    user.style.display = 'block';
+    admin.style.display = 'none';
+  }
+}
+
 /* ═══════════════════════════════════
    PERSONALITY TEST
 ═══════════════════════════════════ */
@@ -972,32 +1088,38 @@ function showPersonalityResult(mainType,scores,gut,heart,head){
   document.getElementById('rp-growth').textContent=t.growth;
   document.getElementById('rp-adv').innerHTML=t.advice.map(a=>`<div class="adv-item"><div class="adv-check">✓</div><div class="adv-text">${a}</div></div>`).join('');
   goTo('s-result-p');
+  
   setTimeout(()=>{
     const ctx=document.getElementById('chart-p');
     if(!ctx)return;
     if(charts.p)charts.p.destroy();
     charts.p=new Chart(ctx,{type:'radar',data:{labels:Object.entries(TYPES).map(([k,v])=>`${k}.${v.name}`),datasets:[{data:Object.keys(TYPES).map(k=>scores[k]),backgroundColor:'rgba(132,94,247,0.12)',borderColor:'#845EF7',pointBackgroundColor:'#845EF7',pointBorderColor:'#0d0d12',pointBorderWidth:2,pointRadius:4,borderWidth:2}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{r:{min:0,max:45,ticks:{stepSize:9,font:{size:9},backdropColor:'transparent',color:'rgba(255,255,255,0.3)'},grid:{color:'rgba(255,255,255,0.06)'},angleLines:{color:'rgba(255,255,255,0.06)'},pointLabels:{font:{size:10,family:'Pretendard'},color:'rgba(240,239,248,0.6)'}}}}});
   },120);
+
   generateAI(mainType,gut,heart,head,scores);
+
+  renderButtons();
 }
+
+
 async function generateAI(mainType,gut,heart,head,scores){
   const t=TYPES[mainType];
   const top=Object.entries(scores).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([tp,sc])=>`${TYPES[tp].name}(${sc})`).join(', ');
   const prompt=`에니어그램 전문 상담사로서 ${state.name}님(주요유형:${mainType}번 ${t.name}, 트라이타입:${gut}-${heart}-${head}, 상위유형:${top})에 대해 따뜻하고 통찰 있는 맞춤 분석을 한국어 200자 내외로 작성해주세요. 1)핵심 성향 공감 2)강점 3)성장 제안 순서로, 전문 용어 없이 따뜻하게.`;
+
+
   try{
-    const res=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:1000,messages:[{role:'user',content:prompt}]})});
+    //const res=await fetch('http://localhost:3000/api/ai',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:1000,messages:[{role:'user',content:prompt}]})});
     const data=await res.json();
+    console.log('AI RESPONSE:', data);
     document.getElementById('rp-ai').textContent=data?.content?.[0]?.text||'분석을 불러오지 못했습니다.';
   }catch(e){document.getElementById('rp-ai').textContent=`${state.name}님은 ${t.name} 유형으로, ${t.core.replace(/"/g,'')} 핵심 동기를 가지고 있습니다.\n\n${t.growth}\n\n${t.advice[0]}`;}
+
 }
 
 function renderPersonalityFromData(data){
-  const mainType = data.mainType;
-  const scores = data.scores;
-
   const [gut, heart, head] = data.tritype.split('-').map(Number);
-
-  showPersonalityResult(mainType, scores, gut, heart, head);
+  showPersonalityResult(data.mainType, data.scores, gut, heart, head);
 }
 
 /* ═══════════════════════════════════
@@ -1063,7 +1185,7 @@ function updateRankingDisplay(){
   el.innerHTML=shapeRanking.map((idx,r)=>`<div class="rd-item"><span class="rd-num">${r+1}위</span><span style="font-size:13px">${SHAPES[idx].name}</span></div>`).join('');
 }*/
 
-function initCanvas2() {
+/*function initCanvas2() {
 
   console.log('initCanvas 실행');
 
@@ -1141,7 +1263,7 @@ function initCanvas2() {
   ctx.beginPath();
   ctx.moveTo(x, y);
   };
-}
+}*/
 
 /*function submitShapes(){
   //if(shapeRanking.length<6){alert('6개 도형 모두 순위를 정해주세요.');return;}
@@ -1638,7 +1760,7 @@ function showDetail(uid){
   </div>`;
 
   if(s.tests.personality){
-    /*const p=s.tests.personality;
+    const p=s.tests.personality;
     const t=TYPES[p.mainType];
     html+=`<div class="detail-section">
       <div class="detail-sec-h">성격유형 검사</div>
@@ -1646,7 +1768,7 @@ function showDetail(uid){
       <div class="detail-row"><span class="detail-key">트라이타입</span><span class="detail-val">${p.tritype||'-'}</span></div>
       <div class="detail-row"><span class="detail-key">유형별 점수</span><span class="detail-val">${p.scores?Object.entries(p.scores).map(([k,v])=>`${k}번:${v}`).join(', '):'-'}</span></div>
       <div class="detail-row"><span class="detail-key">완료일시</span><span class="detail-val">${new Date(p.completedAt).toLocaleString('ko-KR')}</span></div>
-    </div>`;*/
+    </div>`;
 
     const saved = s.tests.personality;
     renderPersonalityFromData(saved);
@@ -1730,7 +1852,7 @@ function showDetail(uid){
 }
 function closeDetail(){document.getElementById('detail-modal').classList.add('hidden');}
 
-function exportUserData(uid){
+/*function exportUserData(uid){
   const subs=JSON.parse(localStorage.getItem('mb_subs')||'[]');
   const s=subs.find(x=>x.id===uid);
   if(!s)return;
@@ -1742,7 +1864,54 @@ function exportUserData(uid){
   const url=URL.createObjectURL(blob);const a=document.createElement('a');
   a.href=url;a.download=`MindBridge_${s.name}_${new Date().toISOString().split('T')[0]}.txt`;
   document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);
-}
+}*/
+
+/*async function exportUserData(uid){
+
+  const subs = JSON.parse(localStorage.getItem('mb_subs') || '[]');
+  const s = subs.find(x => x.id === uid);
+  if(!s) return;
+
+  // 1️⃣ 화면에 데이터 먼저 뿌리기 (PDF용 영역)
+  document.getElementById('pdf-name').textContent = s.name;
+  document.getElementById('pdf-birth').textContent = s.birth || '-';
+  document.getElementById('pdf-phone').textContent = s.phone || '-';
+  document.getElementById('pdf-date').textContent =
+    new Date(s.createdAt).toLocaleString('ko-KR');
+
+  // 테스트 정보도 UI에 넣기 (중요)
+  document.getElementById('pdf-content').innerHTML = `
+    ${s.tests.personality
+      ? `<p>성격유형: ${s.tests.personality.mainType}</p>` : ''}
+    ${s.tests.resilience
+      ? `<p>회복탄력성: ${s.tests.resilience.scores.total}</p>` : ''}
+  `;
+
+  // 2️⃣ 렌더링 기다리기 (중요)
+  await new Promise(r => setTimeout(r, 200));
+
+  // 3️⃣ 캡처
+  const target = document.getElementById('pdf-area');
+
+  const canvas = await html2canvas(target, {
+    scale: 2,
+    useCORS: true,
+    scrollY: 0
+  });
+
+  const imgData = canvas.toDataURL('image/png');
+
+  // 4️⃣ PDF 생성
+  const { jsPDF } = window.jspdf;
+  const pdf = new jsPDF('p', 'mm', 'a4');
+
+  const imgWidth = 210;
+  const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+  pdf.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight);
+
+  pdf.save(`MindBridge_${s.name}.pdf`);
+}*/
 
 function exportAllData(){
   const subs=JSON.parse(localStorage.getItem('mb_subs')||'[]');
@@ -1779,5 +1948,7 @@ window.addEventListener('scroll',()=>{
   if(nav)nav.style.height=window.scrollY>50?'54px':'64px';
 });
 </script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </body>
 </html>

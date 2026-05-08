@@ -144,21 +144,15 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:9999;
   padding:32px 5% 120px;
 }
 .canvas-container{
+  position:relative;
   display:flex;
   justify-content:center;
   align-items:center;
+  overflow:hidden;
   background:var(--surface);
   border:1px solid var(--border);
   border-radius:18px;
   padding:20px;
-  overflow:hidden;
-}
-#canvas-shapes{
-  width:100%;
-  max-width:500px;
-  background:#fff;
-  border-radius:12px;
-  cursor:crosshair;
 }
 .canvas-toolbar{
   display:flex;
@@ -189,23 +183,14 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:9999;
 .tool-btn:hover{border-color:rgba(132,94,247,.4)}
 .color-dot{width:18px;height:18px;border-radius:50%;cursor:pointer;border:2px solid transparent;transition:border-color .15s}
 .color-dot.active{border-color:white}
-.canvas-container{
-  position:relative;
-
-  display:flex;
-  justify-content:center;
-
-  width:100%;
-
-  overflow:auto;
-
-  cursor:crosshair;
-}
 .canvas-bg{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none}
 #canvas-shapes{
-  max-width:100%;
-  height:auto;
+  width:500px;
+  height:500px;
   display:block;
+  background:#fff;
+  border-radius:12px;
+  cursor:crosshair;
 }
 #canvas-life{display:block;width:100%;touch-action:none}
 
@@ -506,9 +491,7 @@ footer{padding:32px 5%;border-top:1px solid var(--border);display:flex;align-ite
         </button>
       </div>
       <div class="canvas-container">
-        <canvas id="canvas-shapes"
-                width="500"
-                height="500">
+        <canvas id="canvas-shapes">
         </canvas>
       </div>
     </div>
@@ -1149,7 +1132,11 @@ function renderPersonalityFromData(data){
 /* ═══════════════════════════════════
    6 SHAPES
 ═══════════════════════════════════ */
+let shapesInitDone = false;
 function buildShapes(){
+
+  if(shapesInitDone) return;
+  shapesInitDone = true;
 
   console.log('buildShapes');
 
@@ -1157,8 +1144,8 @@ function buildShapes(){
 
   if(!canvas){
     console.log('canvas 아직 없음 → retry');
-
-    setTimeout(buildShapes, 50);
+    shapesInitDone = false;
+    setTimeout(buildShapes, 100);
     return;
   }
 
@@ -1168,11 +1155,11 @@ function buildShapes(){
 function submitShapes(){
 
   const canvas = document.getElementById('canvas-shapes');
-
-  // 🔥 새 캔버스 만들기 (합성용)
   const merge = document.createElement('canvas');
-  merge.width = canvas.width;
-  merge.height = canvas.height;
+  
+  const SIZE = 500;
+  merge.width = SIZE;
+  merge.height = SIZE;
 
   const ctx = merge.getContext('2d');
 
@@ -1182,17 +1169,29 @@ function submitShapes(){
 
   img.onload = () => {
 
-    ctx.drawImage(img, 0, 0, merge.width, merge.height);
+    const imgW = 645;
+    const imgH = 408;
 
-    // 🔥 2. 위에 사용자 그림 얹기
-    ctx.drawImage(canvas, 0, 0);
+    const scale = Math.min(SIZE / imgW, SIZE / imgH);
 
-    // 🔥 3. 저장
-    state.shapes = {
-      canvasData: merge.toDataURL('image/png')
-    };
+    const drawW = imgW * scale;
+    const drawH = imgH * scale;
 
-    saveTestResult('shapes', state.shapes);
+    const offsetX = (SIZE - drawW) / 2;
+    const offsetY = (SIZE - drawH) / 2;
+
+    ctx.drawImage(img, offsetX, offsetY, drawW, drawH);
+
+    // 2. 사용자 그림 (비율 그대로 복사)
+    ctx.drawImage(canvas, 0, 0, SIZE, SIZE);
+
+    // 3. 저장
+    const data = merge.toDataURL('image/png');
+
+    saveTestResult('shapes', {
+      canvasData: data,
+      completedAt: new Date().toISOString()
+    });
 
     alert('6도형 검사가 저장되었습니다! 🎉');
     goTo('s-select');
@@ -1222,18 +1221,28 @@ function initCanvas(type){
 
     img.onload = () => {
 
-    console.log('이미지 로드 성공');
+      const ctx = canvas.getContext('2d');
 
-    // 🔥 1. 캔버스 크기 고정 (먼저)
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    const imgW = 645;
+    const imgH = 408;
+
     canvas.width = 500;
     canvas.height = 500;
 
-    // 🔥 2. 배경 채우기 (안 보이는 문제 방지)
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // 🔥 3. 이미지 그리기
-    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-    };
+    const scale = Math.min(canvas.width / imgW, canvas.height / imgH);
+
+    const drawW = imgW * scale;
+    const drawH = imgH * scale;
+
+    const offsetX = (canvas.width - drawW) / 2;
+    const offsetY = (canvas.height - drawH) / 2;
+
+    ctx.drawImage(img, offsetX, offsetY, drawW, drawH);
+    }
 
     img.onerror = () => {
       console.log('이미지 로드 실패:', img.src);
@@ -1323,15 +1332,33 @@ function clearCanvas(type){
 
     console.log('이미지 로드 성공');
 
-    // 🔥 1. 캔버스 크기 고정 (먼저)
-    canvas.width = 500;
-    canvas.height = 500;
+    // 🔥 1. 먼저 크기 고정 (가장 중요)
+    const CANVAS_SIZE = 500;
+    canvas.width = CANVAS_SIZE;
+    canvas.height = CANVAS_SIZE;
 
-    // 🔥 2. 배경 채우기 (안 보이는 문제 방지)
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    // 🔥 2. 완전 초기화
+    ctx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
 
-    // 🔥 3. 이미지 그리기
-    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    // 🔥 3. 원본 이미지 비율
+    const imgW = 645;
+    const imgH = 408;
+
+    // 🔥 4. 비율 유지 스케일
+    const scale = Math.min(
+      CANVAS_SIZE / imgW,
+      CANVAS_SIZE / imgH
+    );
+
+    const drawW = imgW * scale;
+    const drawH = imgH * scale;
+
+    // 🔥 5. 중앙 정렬
+    const offsetX = (CANVAS_SIZE - drawW) / 2;
+    const offsetY = (CANVAS_SIZE - drawH) / 2;
+
+    // 🔥 6. 렌더
+    ctx.drawImage(img, offsetX, offsetY, drawW, drawH);
     };
 
     img.onerror = () => {
@@ -1664,6 +1691,8 @@ function showDetail(uid){
   if(s.tests.shapes){
 
   const sh = s.tests.shapes;
+  console.log("shapes:", s.tests.shapes);
+  console.log("canvasData:", s.tests.shapes?.canvasData);
 
   html += `
     <div class="detail-section">

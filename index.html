@@ -1850,7 +1850,11 @@ function showDetail(uid){
   box.innerHTML=html;
   modal.classList.remove('hidden');
 }
-function closeDetail(){document.getElementById('detail-modal').classList.add('hidden');}
+function closeDetail(){
+  document.getElementById('detail-modal').classList.add('hidden');
+  document.getElementById('admin-dashboard').classList.remove('hidden');
+  buildAdminDashboard();
+}
 
 /*function exportUserData(uid){
   const subs=JSON.parse(localStorage.getItem('mb_subs')||'[]');

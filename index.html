@@ -1134,7 +1134,7 @@ function initCanvas2() {
   };
 }
 
-function submitShapes(){
+/*function submitShapes(){
   //if(shapeRanking.length<6){alert('6개 도형 모두 순위를 정해주세요.');return;}
   const canvas=document.getElementById('canvas-shapes');
   //state.shapes={ranking:shapeRanking.map(i=>SHAPES[i].key),canvasData:canvas?canvas.toDataURL('image/png'):null};
@@ -1146,6 +1146,40 @@ function submitShapes(){
   saveTestResult('shapes',state.shapes);
   alert('6도형 검사가 저장되었습니다! 🎉');
   goTo('s-select');
+}*/
+
+function submitShapes(){
+
+  const canvas = document.getElementById('canvas-shapes');
+
+  // 🔥 새 캔버스 만들기 (합성용)
+  const merge = document.createElement('canvas');
+  merge.width = canvas.width;
+  merge.height = canvas.height;
+
+  const ctx = merge.getContext('2d');
+
+  // 🔥 1. 배경 이미지 다시 그리기
+  const img = new Image();
+  img.src = './images/shapes.png';
+
+  img.onload = () => {
+
+    ctx.drawImage(img, 0, 0, merge.width, merge.height);
+
+    // 🔥 2. 위에 사용자 그림 얹기
+    ctx.drawImage(canvas, 0, 0);
+
+    // 🔥 3. 저장
+    state.shapes = {
+      canvasData: merge.toDataURL('image/png')
+    };
+
+    saveTestResult('shapes', state.shapes);
+
+    alert('6도형 검사가 저장되었습니다! 🎉');
+    goTo('s-select');
+  };
 }
 
 /* ═══════════════════════════════════
@@ -1206,16 +1240,6 @@ function initCanvas(type){
     e.preventDefault();
     ds.active=true;
     const cs = state.canvases[type];
-
-    // 🔥 핵심: 여기서 상태 초기화
-    /*if(cs.tool === 'pen'){
-      ctx.globalCompositeOperation = 'source-over';
-      ctx.strokeStyle = cs.color;
-      ctx.lineWidth = 2.5;
-    } else {
-      ctx.globalCompositeOperation = 'destination-out';
-      ctx.lineWidth = 24;
-    }*/
 
     if (cs.tool === 'pen') {
       ctx.globalCompositeOperation = 'source-over';

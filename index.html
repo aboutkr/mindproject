@@ -927,10 +927,8 @@ window.exportUserData = async function(uid){
   const s = subs.find(x => x.id === uid);
   if(!s) return;
 
-  // 1️⃣ 화면 이동 (이미 render된 상태 유지)
   goTo('s-result-p');
 
-  // 2️⃣ 렌더 안정화 (핵심)
   await new Promise(r => setTimeout(r, 500));
 
   const target = document.getElementById('detail-box');
@@ -939,31 +937,26 @@ window.exportUserData = async function(uid){
     return;
   }
 
-  // 3️⃣ 캡처 (아까 잘 되던 방식 유지 + 옵션만 보정)
   const canvas = await html2canvas(target, {
   scale: 2,
   useCORS: true,
   backgroundColor: '#0d0d12',
 
-  // 🔥 핵심 수정 1 (위쪽 잘림 방지)
   scrollX: 0,
   scrollY: 0,
 
-  // 🔥 핵심 수정 2 (렌더 영역 정확히 고정)
   windowWidth: document.documentElement.scrollWidth,
   windowHeight: document.documentElement.scrollHeight
 });
 
   const imgData = canvas.toDataURL('image/png');
 
-  // 4️⃣ PDF 생성
   const { jsPDF } = window.jspdf;
   const pdf = new jsPDF('p', 'mm', 'a4');
 
   const pageWidth = 210;
   const pageHeight = 297;
 
-  // 🔥 1페이지 맞추기 (안 잘리게 핵심 수정)
   const ratio = Math.min(
     pageWidth / canvas.width,
     pageHeight / canvas.height
@@ -1073,8 +1066,11 @@ function submitPersonality(){
   saveTestResult('personality',{scores,mainType,tritype:`${gut}-${heart}-${head}`});
   goTo('s-loading');
   setTimeout(()=>{showPersonalityResult(mainType,scores,gut,heart,head);},1800);
+
+  
 }
 function showPersonalityResult(mainType,scores,gut,heart,head){
+
   const t=TYPES[mainType];
   document.getElementById('rp-num').textContent=mainType;
   document.getElementById('rh-p').style.background=t.grad;
@@ -1096,9 +1092,37 @@ function showPersonalityResult(mainType,scores,gut,heart,head){
     charts.p=new Chart(ctx,{type:'radar',data:{labels:Object.entries(TYPES).map(([k,v])=>`${k}.${v.name}`),datasets:[{data:Object.keys(TYPES).map(k=>scores[k]),backgroundColor:'rgba(132,94,247,0.12)',borderColor:'#845EF7',pointBackgroundColor:'#845EF7',pointBorderColor:'#0d0d12',pointBorderWidth:2,pointRadius:4,borderWidth:2}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{r:{min:0,max:45,ticks:{stepSize:9,font:{size:9},backdropColor:'transparent',color:'rgba(255,255,255,0.3)'},grid:{color:'rgba(255,255,255,0.06)'},angleLines:{color:'rgba(255,255,255,0.06)'},pointLabels:{font:{size:10,family:'Pretendard'},color:'rgba(240,239,248,0.6)'}}}}});
   },120);
 
+  setTimeout(() => {
+
+  const target = document.getElementById("s-result-p");
+  if(!target) return;
+
+  html2canvas(target, {
+    backgroundColor: "#0d0d12",
+    scale: 2,
+    useCORS: true
+  }).then(canvas => {
+
+    const personalityData = {
+      mainType,
+      scores,
+      gut,
+      heart,
+      head,
+      tritype:`${gut}-${heart}-${head}`,
+      canvasData:canvas.toDataURL("image/png"),
+      completedAt: new Date().toISOString()
+    };
+
+    saveTestResult('personality', personalityData);
+  });
+
+}, 800);
+
+
   generateAI(mainType,gut,heart,head,scores);
 
-  renderButtons();
+  //renderButtons();
 }
 
 
@@ -1623,6 +1647,8 @@ function showDetail(uid){
 
   if(s.tests.personality){
     const p=s.tests.personality;
+    console.log(p);
+    console.log(p.canvasData);
     const t=TYPES[p.mainType];
     html+=`<div class="detail-section">
       <div class="detail-sec-h">성격유형 검사</div>
@@ -1630,10 +1656,9 @@ function showDetail(uid){
       <div class="detail-row"><span class="detail-key">트라이타입</span><span class="detail-val">${p.tritype||'-'}</span></div>
       <div class="detail-row"><span class="detail-key">유형별 점수</span><span class="detail-val">${p.scores?Object.entries(p.scores).map(([k,v])=>`${k}번:${v}`).join(', '):'-'}</span></div>
       <div class="detail-row"><span class="detail-key">완료일시</span><span class="detail-val">${new Date(p.completedAt).toLocaleString('ko-KR')}</span></div>
+      ${p.canvasData ? `<img src="${p.canvasData}" class="canvas-preview" alt="성격유형"/>` : ``}
     </div>`;
 
-    const saved = s.tests.personality;
-    renderPersonalityFromData(saved);
   }
 
   if(s.tests.shapes){
@@ -1713,9 +1738,23 @@ function showDetail(uid){
   modal.classList.remove('hidden');
 }
 function closeDetail(){
-  document.getElementById('detail-modal').classList.add('hidden');
-  document.getElementById('admin-dashboard').classList.remove('hidden');
-  buildAdminDashboard();
+  const modal = document.getElementById('detail-modal');
+  const admin = document.getElementById('admin-dashboard');
+
+  // 모달 닫기
+  if(modal){
+    modal.classList.add('hidden');
+  }
+
+  // 관리자 화면 다시 보여주기
+  if(admin){
+    admin.classList.remove('hidden');
+  }
+
+  // 목록 재렌더 (있을 때만)
+  if(typeof buildAdminDashboard === 'function'){
+    buildAdminDashboard();
+  }
 }
 
 function exportAllData(){

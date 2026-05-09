@@ -1093,7 +1093,7 @@ function showPersonalityResult(mainType,scores,gut,heart,head){
       heart,
       head,
       tritype:`${gut}-${heart}-${head}`,
-      canvasData:canvas.toDataURL("image/png"),
+      //canvasData:canvas.toDataURL("image/png"),
       completedAt: new Date().toISOString()
     };
 
@@ -1105,7 +1105,7 @@ function showPersonalityResult(mainType,scores,gut,heart,head){
 
   generateAI(mainType,gut,heart,head,scores);
 
-  //renderButtons();
+  renderButtons();
 }
 
 
@@ -1156,7 +1156,7 @@ function submitShapes(){
 
   const canvas = document.getElementById('canvas-shapes');
   const merge = document.createElement('canvas');
-  
+
   const SIZE = 500;
   merge.width = SIZE;
   merge.height = SIZE;
@@ -1683,9 +1683,9 @@ function showDetail(uid){
       <div class="detail-row"><span class="detail-key">트라이타입</span><span class="detail-val">${p.tritype||'-'}</span></div>
       <div class="detail-row"><span class="detail-key">유형별 점수</span><span class="detail-val">${p.scores?Object.entries(p.scores).map(([k,v])=>`${k}번:${v}`).join(', '):'-'}</span></div>
       <div class="detail-row"><span class="detail-key">완료일시</span><span class="detail-val">${new Date(p.completedAt).toLocaleString('ko-KR')}</span></div>
-      ${p.canvasData ? `<img src="${p.canvasData}" class="canvas-preview" alt="성격유형"/>` : ``}
     </div>`;
 
+    renderPersonalityFromData(p);
   }
 
   if(s.tests.shapes){

@@ -1033,10 +1033,20 @@ window.exportTestPDF = async function () {
   const { jsPDF } = window.jspdf;
   const pdf = new jsPDF('p', 'mm', 'a4');
 
-  const width = 190;
-  const height = (canvas.height * width) / canvas.width;
+  const pdfWidth = pdf.internal.pageSize.getWidth();
+  const pdfHeight = pdf.internal.pageSize.getHeight();
 
-  pdf.addImage(imgData, 'PNG', 10, 10, width, height);
+  const imgWidth = pdfWidth;
+  const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+  pdf.addImage(
+    imgData,
+    'PNG',
+    0,
+    0,
+    imgWidth,
+    imgHeight
+  );
   pdf.save('personality_result.pdf');
 };
 

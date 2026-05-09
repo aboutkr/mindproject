@@ -1645,6 +1645,25 @@ function submitResilience(){
   setTimeout(()=>showResilienceResult(ss,scaled,counts),1800);
 }
 function showResilienceResult(ss,scaled,counts){
+  counts ??= {
+    self: 0,
+    inter: 0,
+    posi: 0
+  };
+
+  scaled ??= {
+    self: 0,
+    inter: 0,
+    posi: 0
+  };
+
+  ss ??= {
+    total: 0,
+    self: 0,
+    inter: 0,
+    posi: 0
+  };
+
   document.getElementById('rr-total').textContent=ss.total;
   let title,desc,rec;
   if(ss.total>=200){title='🌟 매우 높음';desc='회복탄력성이 매우 훌륭한 수준입니다. 역경을 도약의 기회로 삼는 강력한 마음 근력을 지니고 있습니다.';rec='지금의 단단한 마음을 유지하기 위해 매일 감사 일기를 쓰고 주변 사람들과 깊은 대화를 나누는 루틴을 지속하세요.';}

@@ -597,7 +597,9 @@ footer{padding:32px 5%;border-top:1px solid var(--border);display:flex;align-ite
 
 <!-- ════════ SCREEN: PERSONALITY RESULT ════════ -->
 <div id="s-result-p" class="sc-scroll">
-  <nav class="nav"><div class="nav-logo"><div class="nav-mark">MB</div><span class="nav-name">Mind Bridge</span></div><button class="nav-btn" onclick="goTo('s-select')">← 다른 검사</button></nav>
+  <nav class="nav"><div class="nav-logo"><div class="nav-mark">MB</div><span class="nav-name">Mind Bridge</span></div>
+    <button id="nav-back-btn" class="nav-btn" onclick="goTo('s-select')">← 다른 검사</button>
+  </nav>
   <div class="result-body">
     <div class="res-hero" id="rh-p"><div class="res-tag">성격유형 검사 결과 · Mind Bridge</div><div class="res-bignum" id="rp-num"></div><div class="res-name serif" id="rp-name"></div><div class="res-core" id="rp-core"></div><div class="res-badges" id="rp-badges"></div></div>
     <div class="ai-card"><div class="ai-label"><svg width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M7 1L8.5 5H13L9.5 7.5L11 12L7 9L3 12L4.5 7.5L1 5H5.5L7 1Z" fill="#845EF7"/></svg>AI 맞춤 분석</div><div class="ai-body" id="rp-ai"><div style="display:flex;align-items:center;gap:10px;color:var(--muted);font-size:13px"><div class="dots" style="margin-top:0"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>AI가 분석 중입니다...</div></div></div>
@@ -883,6 +885,21 @@ function goToTest(test){
   else if(test==='resilience'){buildResilience();goTo('s-resilience');}
   else if(test==='sct'){buildSCT();goTo('s-sct');}
 }
+function setTestNav(isAdmin) {
+  const btn = document.getElementById("nav-back-btn");
+  if (!btn) return;
+
+  if (isAdmin) {
+    btn.textContent = "← 대시보드";
+    btn.onclick = () => {
+      buildAdminDashboard();
+      goTo("s-admin");
+    };
+  } else {
+    btn.textContent = "← 다른 검사";
+    btn.onclick = () => goTo("s-select");
+  }
+}
 
 /* ═══════════════════════════════════
    INFO FORM
@@ -910,10 +927,9 @@ window.exportUserData = async function(uid){
   const s = subs.find(x => x.id === uid);
   if(!s) return;
 
+  const isAdmin = state.adminLoggedIn;
   goTo('s-result-p');
-
-  await new Promise(r => setTimeout(r, 500));
-
+  
   const target = document.getElementById('detail-box');
   if(!target){
     console.error('detail-box 없음');
@@ -1104,7 +1120,9 @@ function showPersonalityResult(mainType,scores,gut,heart,head){
 
 
   generateAI(mainType,gut,heart,head,scores);
-
+  requestAnimationFrame(() => {
+    setTestNav(state.adminLoggedIn);
+  });
   renderButtons();
 }
 

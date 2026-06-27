@@ -8,12 +8,20 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <style>
 :root{
-  --dark:#0d0d12;--surface:#13131a;--surface2:#1a1a24;--surface3:#22222e;
-  --border:rgba(255,255,255,0.07);--border2:rgba(255,255,255,0.13);
-  --text:#f0eff8;--muted:#8884a0;--muted2:#56527a;
-  --coral:#FF6B6B;--purple:#845EF7;--blue:#339AF0;--green:#52E09C;--gold:#C9A96E;
-  --grad:linear-gradient(135deg,#FF6B6B,#845EF7,#339AF0);
-  --grad-text:linear-gradient(135deg,#FF8C8C,#9B79FF,#5BAFFF);
+  --dark:#ffffff;
+  --surface:#ffffff;
+  --surface2:#f8f9fa;
+  --surface3:#f1f3f5;
+  --border: rgba(0, 0, 0, 0.08);
+  --border2: rgba(0, 0, 0, 0.15);
+  --text: #000000;--muted:#8884a0;--muted2:#56527a;
+  --coral:#C86B6B;
+  --purple:#6F68B5;
+  --blue:#4B78A8;
+  --green:#4FA387;
+  --gold:#A8926C;
+  --grad: #6F68B5;
+  --grad-text: #4B78A8;
 }
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html{scroll-behavior:smooth}
@@ -29,13 +37,41 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:9999;
 .sc-scroll.on{display:block}
 
 /* ── NAV ── */
-.nav{position:sticky;top:0;z-index:500;height:64px;display:flex;align-items:center;justify-content:space-between;padding:0 5%;background:rgba(13,13,18,.9);backdrop-filter:blur(20px);border-bottom:1px solid var(--border)}
+.nav{
+  position:sticky;
+  top:0;
+  z-index:500;
+  height:64px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  padding:0 5%;
+
+  background:rgba(255,255,255,0.9);
+  backdrop-filter:blur(12px);
+
+  border-bottom:1px solid var(--border);
+}
 .nav-logo{display:flex;align-items:center;gap:10px;cursor:pointer}
 .nav-mark{width:32px;height:32px;border-radius:9px;background:var(--grad);display:flex;align-items:center;justify-content:center;font-weight:900;font-size:11px;color:white;flex-shrink:0}
 .nav-name{font-size:15px;font-weight:700;background:var(--grad-text);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
 .nav-r{display:flex;align-items:center;gap:10px}
-.nav-btn{background:none;border:1px solid var(--border2);color:var(--muted);font-size:13px;font-weight:500;padding:7px 16px;border-radius:8px;cursor:pointer;transition:all .2s;font-family:'Pretendard',sans-serif}
-.nav-btn:hover{color:var(--text);border-color:rgba(255,255,255,.2)}
+.nav-btn{
+  background:none;
+  border:1px solid var(--border2);
+  color:var(--muted);
+  font-size:13px;
+  font-weight:500;
+  padding:7px 16px;
+  border-radius:8px;
+  cursor:pointer;
+  transition:all .2s;
+  font-family:'Pretendard',sans-serif;
+}
+.nav-btn:hover{
+  color:var(--text);
+  border-color:rgba(0,0,0,.2);
+}
 .nav-cta{background:var(--grad);border:none;color:white;font-size:13px;font-weight:600;padding:8px 18px;border-radius:8px;cursor:pointer;font-family:'Pretendard',sans-serif;transition:opacity .2s}
 .nav-cta:hover{opacity:.85}
 
@@ -69,18 +105,100 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:9999;
 @keyframes mq{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}
 
 /* ── INFO FORM ── */
-.form-wrap{flex:1;display:flex;align-items:center;justify-content:center;padding:80px 5%}
-.form-card{background:var(--surface);border:1px solid var(--border2);border-radius:22px;padding:48px 44px;width:100%;max-width:480px;position:relative;overflow:hidden}
-.form-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:var(--grad)}
-.form-step{font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#845EF7;margin-bottom:10px}
-.form-h{font-family:'Noto Serif KR',serif;font-size:24px;font-weight:700;margin-bottom:8px;letter-spacing:-.4px}
-.form-sub{font-size:14px;color:var(--muted);margin-bottom:32px;line-height:1.6}
-.fg{margin-bottom:18px}
-.fl{display:block;font-size:12px;font-weight:600;color:rgba(240,239,248,.55);margin-bottom:7px;letter-spacing:.3px}
-.fi{width:100%;padding:12px 15px;border:1.5px solid rgba(255,255,255,.1);border-radius:10px;font-size:14px;font-family:'Pretendard',sans-serif;color:var(--text);background:var(--surface2);outline:none;transition:border-color .2s}
-.fi:focus{border-color:#845EF7}
-.fi::placeholder{color:var(--muted2)}
-.fi-privacy{margin-top:14px;font-size:11px;color:var(--muted2);text-align:center}
+.form-wrap{
+  flex:1;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:80px 5%;
+}
+
+.form-card{
+  background:var(--surface);
+  border:1px solid var(--border2);
+  border-radius:22px;
+  padding:48px 44px;
+  width:100%;
+  max-width:480px;
+  position:relative;
+  overflow:hidden;
+}
+
+/* top accent line */
+.form-card::before{
+  content:'';
+  position:absolute;
+  top:0;
+  left:0;
+  right:0;
+  height:2px;
+  background:#111;
+}
+
+.form-step{
+  font-size:11px;
+  font-weight:700;
+  letter-spacing:2px;
+  text-transform:uppercase;
+  color:#666;
+  margin-bottom:10px;
+}
+
+.form-h{
+  font-family:'Noto Serif KR',serif;
+  font-size:24px;
+  font-weight:700;
+  margin-bottom:8px;
+  letter-spacing:-.4px;
+  color:#111;
+}
+
+.form-sub{
+  font-size:14px;
+  color:var(--muted);
+  margin-bottom:32px;
+  line-height:1.6;
+}
+
+.fg{
+  margin-bottom:18px;
+}
+
+.fl{
+  display:block;
+  font-size:12px;
+  font-weight:600;
+  color:#666;
+  margin-bottom:7px;
+}
+
+.fi{
+  width:100%;
+  padding:12px 15px;
+  border:1px solid var(--border);
+  border-radius:10px;
+  font-size:14px;
+  font-family:'Pretendard',sans-serif;
+  color:var(--text);
+  background:#fff;
+  outline:none;
+  transition:border-color .2s;
+}
+
+.fi:focus{
+  border-color:#111;
+}
+
+.fi::placeholder{
+  color:#aaa;
+}
+
+.fi-privacy{
+  margin-top:14px;
+  font-size:11px;
+  color:#888;
+  text-align:center;
+}
 
 /* ── TEST SELECTION (dark card grid) ── */
 .sel-wrap{max-width:1100px;margin:0 auto;padding:48px 5%}
@@ -101,12 +219,53 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:9999;
 .sel-tag{font-size:11px;font-weight:500;padding:4px 10px;border-radius:16px;background:var(--surface3)}
 
 /* ── PROGRESS BAR ── */
-.prog-bar-wrap{background:var(--surface);border-bottom:1px solid var(--border);padding:12px 5%;position:sticky;top:64px;z-index:100}
-.prog-inner{max-width:860px;margin:0 auto;display:flex;align-items:center;gap:12px}
-.prog-bg{flex:1;height:5px;background:rgba(255,255,255,.06);border-radius:3px;overflow:hidden}
-.prog-fill{height:100%;background:var(--grad);border-radius:3px;transition:width .3s ease;width:0%}
-.prog-txt{font-size:12px;font-weight:600;color:var(--muted);white-space:nowrap}
-.prog-txt strong{background:var(--grad-text);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.prog-bar-wrap{
+  background:var(--surface);
+  border-bottom:1px solid var(--border);
+  padding:12px 5%;
+  position:sticky;
+  top:64px;
+  z-index:100;
+}
+
+.prog-inner{
+  max-width:860px;
+  margin:0 auto;
+  display:flex;
+  align-items:center;
+  gap:12px;
+}
+
+/* background track */
+.prog-bg{
+  flex:1;
+  height:5px;
+  background:var(--surface2);
+  border-radius:3px;
+  overflow:hidden;
+}
+
+/* fill (보라 유지) */
+.prog-fill{
+  height:100%;
+  background:#845EF7;
+  border-radius:3px;
+  transition:width .3s ease;
+  width:0%;
+}
+
+.prog-txt{
+  font-size:12px;
+  font-weight:600;
+  color:var(--muted);
+  white-space:nowrap;
+}
+
+/* strong 강조 제거 → 보라 포인트 */
+.prog-txt strong{
+  color:#845EF7;
+  font-weight:700;
+}
 
 /* ── TEST BODY ── */
 .test-body{max-width:860px;margin:0 auto;padding:32px 5% 160px}
@@ -195,13 +354,61 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:9999;
 #canvas-life{display:block;width:100%;touch-action:none}
 
 /* ── LIFE GRAPH ── */
-.lifegraph-wrap{max-width:900px;margin:0 auto;padding:32px 5% 120px}
-.lg-header{text-align:center;margin-bottom:24px}
-.lg-title{font-family:'Noto Serif KR',serif;font-size:32px;font-weight:700;color:#7BB8D4;margin-bottom:8px}
-.lg-sub{font-size:13px;color:var(--muted);line-height:1.6;max-width:600px;margin:0 auto}
-.lg-date-row{display:flex;justify-content:flex-end;align-items:center;gap:10px;margin-bottom:16px}
-.lg-date-input{background:var(--surface2);border:1px solid var(--border2);border-radius:8px;padding:8px 12px;color:var(--text);font-size:13px;font-family:'Pretendard',sans-serif;outline:none}
-.lg-date-input:focus{border-color:#845EF7}
+.lifegraph-wrap{
+  max-width:900px;
+  margin:0 auto;
+  padding:32px 5% 120px;
+}
+
+.lg-header{
+  text-align:center;
+  margin-bottom:24px;
+}
+
+/* title (파란색 → 기본 텍스트) */
+.lg-title{
+  font-family:'Noto Serif KR',serif;
+  font-size:32px;
+  font-weight:700;
+  color:#111;
+  margin-bottom:8px;
+}
+
+.lg-sub{
+  font-size:13px;
+  color:var(--muted);
+  line-height:1.6;
+  max-width:600px;
+  margin:0 auto;
+}
+
+/* date row */
+.lg-date-row{
+  display:flex;
+  justify-content:flex-end;
+  align-items:center;
+  gap:10px;
+  margin-bottom:16px;
+}
+
+/* input */
+.lg-date-input{
+  background:var(--surface2);
+  border:1px solid var(--border);
+  border-radius:8px;
+  padding:8px 12px;
+  color:var(--text);
+  font-size:13px;
+  font-family:'Pretendard',sans-serif;
+  outline:none;
+  transition:border-color .2s;
+}
+
+/* focus → 보라 포인트만 유지 */
+.lg-date-input:focus{
+  border-color:#845EF7;
+  box-shadow:0 0 0 3px rgba(132,94,247,.08);
+}
 
 /* ── LOADING ── */
 .loading-body{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:60px 5%}
@@ -497,10 +704,7 @@ footer{padding:32px 5%;border-top:1px solid var(--border);display:flex;align-ite
     </div>
 
     <div style="text-align:center;margin-top:24px">
-      <button class="btn-p"
-              onclick="submitShapes()">
-        저장 및 완료 →
-      </button>
+      <button class="btn-p" onclick="submitShapes()">저장 및 완료 →</button>
     </div>
   </div>
 </div>
@@ -545,9 +749,9 @@ footer{padding:32px 5%;border-top:1px solid var(--border);display:flex;align-ite
 <!-- ════════ SCREEN: EMOTION TEST ════════ -->
 <div id="s-emotion" class="sc-scroll">
   <nav class="nav"><div class="nav-logo"><div class="nav-mark">MB</div><span class="nav-name">Mind Bridge</span></div><button class="nav-btn" onclick="goTo('s-select')">← 검사 선택</button></nav>
-  <div class="prog-bar-wrap"><div class="prog-inner"><div class="prog-bg"><div class="prog-fill" id="prog-e"></div></div><div class="prog-txt"><strong id="prog-e-cnt">0</strong> / 20</div></div></div>
+  <div class="prog-bar-wrap"><div class="prog-inner"><div class="prog-bg"><div class="prog-fill" id="prog-e"></div></div><div class="prog-txt"><strong id="prog-e-cnt">0</strong> / 18</div></div></div>
   <div class="test-body" id="body-emotion"></div>
-  <div class="submit-bar"><div class="sb-info">응답 완료 <strong id="sb-e-cnt">0</strong> / 20</div><button class="btn-sb" id="btn-e-sub" onclick="submitEmotion()">결과 보기 →</button></div>
+  <div class="submit-bar"><div class="sb-info">응답 완료 <strong id="sb-e-cnt">0</strong> / 18</div><button class="btn-sb" id="btn-e-sub" onclick="submitEmotion()">결과 보기 →</button></div>
 </div>
 
 <!-- ════════ SCREEN: RESILIENCE TEST ════════ -->
@@ -1010,6 +1214,18 @@ window.exportUserData = async function(uid){
 };
 
 window.exportTestPDF = async function () {
+
+  const subs = JSON.parse(localStorage.getItem('mb_subs') || '[]');
+
+  const currentUser =
+    subs.find(x => x.id === state.currentUserId);
+
+  const safeName = (currentUser?.name || 'user')
+    .replace(/[\\/:*?"<>|]/g, '');
+
+  const today = new Date()
+    .toISOString()
+    .slice(0,10);
 
   console.log('html2canvas:', typeof html2canvas);
 
@@ -1595,7 +1811,51 @@ function showEmotionResult(catScores,mainCat){
     const labels=Object.values(EQ_CATS).map(v=>v.label);
     const data=Object.entries(EQ_CATS).map(([k,v])=>catScores[k]);
     const colors=Object.values(EQ_CATS).map(v=>v.color);
-    charts.e=new Chart(ctx,{type:'radar',data:{labels,datasets:[{data,backgroundColor:'rgba(132,94,247,0.1)',borderColor:'#845EF7',pointBackgroundColor:colors,pointRadius:5,borderWidth:2}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{r:{min:0,ticks:{backdropColor:'transparent',color:'rgba(255,255,255,0.3)'},grid:{color:'rgba(255,255,255,0.06)'},angleLines:{color:'rgba(255,255,255,0.06)'},pointLabels:{font:{size:11},color:'rgba(240,239,248,0.7)'}}}}});
+    charts.e = new Chart(ctx, {
+    type: 'radar',
+    data: {
+        labels,
+        datasets: [{
+            data,
+            backgroundColor: 'rgba(132,94,247,0.12)',
+            borderColor: '#845EF7',
+            pointBackgroundColor: colors,
+            pointRadius: 5,
+            borderWidth: 2
+        }]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+            legend: {
+                display: false
+            }
+        },
+        scales: {
+            r: {
+                min: 0,
+                ticks: {
+                    backdropColor: 'transparent',
+                    color: '#999'
+                },
+                grid: {
+                    color: 'rgba(0,0,0,0.08)'
+                },
+                angleLines: {
+                    color: 'rgba(0,0,0,0.08)'
+                },
+                pointLabels: {
+                    font: {
+                        size: 12,
+                        weight: '600'
+                    },
+                    color: '#444'
+                }
+            }
+        }
+    }
+});
   },120);
 
 

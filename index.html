@@ -1270,12 +1270,12 @@ window.exportTestPDF = async function () {
 
   await new Promise(r => setTimeout(r, 150));
 
-  const canvas = await html2canvas(target, {
+  const canvas = await html2canvas(document.body, {
     useCORS: true,
     scale: 2,
     scrollY: 0,
-    windowWidth: target.scrollWidth,
-    windowHeight: target.scrollHeight
+    windowWidth: document.body.scrollWidth,
+    windowHeight: document.body.scrollHeight
   });
 
   const imgData = canvas.toDataURL('image/png');
